@@ -1,0 +1,9 @@
+# .gitignore
+node_modules/
+backup/
+data/ # Usually you don't commit the user data
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.env
+.DS_Store

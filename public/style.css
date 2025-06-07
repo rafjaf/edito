@@ -1,0 +1,158 @@
+/* style.css */
+:root {
+    --header-height: 45px;
+    --footer-height: 25px;
+    --pane-border: 1px solid #ccc;
+    --primary-bg: #f8f9fa;
+    --secondary-bg: #ffffff;
+    --text-color: #212529;
+    --muted-text: #6c757d;
+    --link-color: #007bff;
+    --hover-bg: #e9ecef;
+    --active-bg: #d3d3d3;
+    --icon-color: #495057;
+    --button-bg: #f1f3f5;
+    --button-hover-bg: #dee2e6;
+    --notification-bg: rgba(0, 0, 0, 0.7);
+    --notification-text: #fff;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; line-height: 1.5; color: var(--text-color); background-color: var(--primary-bg); overflow: hidden; }
+a { cursor: pointer; }
+
+/* Header */
+#header { display: flex; justify-content: space-between; align-items: center; height: var(--header-height); padding: 0 15px; background-color: var(--secondary-bg); border-bottom: var(--pane-border); position: fixed; top: 0; left: 0; width: 100%; z-index: 10; }
+.app-title { font-size: 1.4em; font-weight: bold; flex-shrink: 0; }
+.action-menu { position: relative; flex-shrink: 0; }
+#header-current-file {
+    position: absolute; left: 15%; right: 15%; top: 50%; transform: translateY(-50%);
+    text-align: center; color: var(--text-color); font-weight: bold; font-size: 1.4em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 20px; pointer-events: none;
+}
+#action-menu-button { background: none; border: none; font-size: 1.3em; cursor: pointer; padding: 5px; color: var(--icon-color); }
+#action-menu-button:hover { color: var(--text-color); }
+.menu-dropdown { position: absolute; top: 100%; right: 0; background-color: var(--secondary-bg); border: var(--pane-border); box-shadow: 0 2px 5px rgba(0,0,0,0.1); padding: 5px 0; min-width: 180px; z-index: 100; border-radius: 4px; }
+.menu-dropdown a { display: block; padding: 8px 15px; color: var(--text-color); text-decoration: none; white-space: nowrap; }
+.menu-dropdown a:hover { background-color: var(--hover-bg); }
+.menu-dropdown hr { border: none; border-top: 1px solid #eee; margin: 4px 0; }
+.hidden { display: none; }
+
+/* Main Content Area */
+#main-container { display: flex; height: calc(100% - var(--header-height) - var(--footer-height)); margin-top: var(--header-height); width: 100%; }
+
+/* File Pane (Left) */
+#file-pane { width: 15%; min-width: 180px; background-color: var(--secondary-bg); border-right: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
+.file-actions { padding: 10px; border-bottom: var(--pane-border); display: flex; gap: 10px; flex-shrink: 0; }
+.file-actions button { background: var(--button-bg); border: 1px solid #ccc; border-radius: 3px; padding: 5px 8px; cursor: pointer; font-size: 1.1em; color: var(--icon-color); }
+.file-actions button:hover:not(:disabled) { background: var(--button-hover-bg); }
+.file-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+#file-list-container { flex-grow: 1; overflow-y: auto; padding: 5px 0; min-height: 0; }
+#file-list { list-style: none; padding: 0; margin: 0; }
+#file-list li { padding: 6px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#file-list li:hover { background-color: var(--hover-bg); }
+#file-list li.active { background-color: var(--active-bg); font-weight: bold; }
+#file-list li .icon { display: inline-block; width: 16px; text-align: center; color: var(--icon-color); margin-right: 5px; vertical-align: middle; }
+#current-folder-path { flex-shrink: 0; background: var(--primary-bg); padding: 5px 10px; font-size: 0.9em; color: var(--muted-text); border-top: var(--pane-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Editor Pane (Center) */
+#editor-pane { width: 70%; flex-grow: 1; background-color: #fff; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+/* --- EasyMDE Integration Styles --- */
+#editor { display: none; }
+.EasyMDEContainer { display: flex; flex-direction: column; height: 100%; border: none !important; box-shadow: none !important; min-height: 0; }
+.editor-toolbar { flex-shrink: 0; border-bottom: 1px solid #ddd; }
+.CodeMirror-wrap { flex-grow: 1; min-height: 0; position: relative; }
+.CodeMirror { height: 100% !important; font-size: 16px; line-height: 1.6; }
+.editor-preview, .editor-preview-side {
+    padding: 15px;
+    background-color: #fff;
+    overflow-y: auto;
+}
+
+/* --- Side-by-Side View --- */
+.EasyMDEContainer.sided { flex-direction: row; }
+.EasyMDEContainer.sided .CodeMirror-wrap { flex: 1; min-width: 0; }
+.EasyMDEContainer.sided .editor-preview-side { flex: 1; min-width: 0; border-left: 1px solid #ddd; }
+
+/* --- Style for escaped backslash --- */
+.cm-s-easymde .cm-escape-char { color: #bbb !important; }
+
+/* --- Indentation for nested lists in PREVIEW mode --- */
+.editor-preview ul ul, .editor-preview-side ul ul,
+.editor-preview ol ol, .editor-preview-side ol ol,
+.editor-preview ul ol, .editor-preview-side ul ol,
+.editor-preview ol ul, .editor-preview-side ol ul {
+    margin-left: 25px;
+}
+
+/* Outline Pane (Right) */
+#outline-pane { width: 15%; min-width: 150px; background-color: var(--secondary-bg); border-left: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
+#outline-pane h2 { font-size: 1.1em; padding: 10px 15px; margin: 0; border-bottom: var(--pane-border); flex-shrink: 0; }
+#outline-list-container { flex-grow: 1; overflow-y: auto; padding: 10px 0; }
+#outline-list { list-style: none; padding: 0; margin: 0; }
+#outline-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#outline-list a { display: block; padding: 4px 15px; color: var(--link-color); text-decoration: none; font-size: 0.9em; cursor: pointer; }
+#outline-list a:hover { background-color: var(--hover-bg); text-decoration: underline; }
+#outline-list a.h1 { padding-left: 15px; font-weight: bold; }
+#outline-list a.h2 { padding-left: 25px; }
+#outline-list a.h3 { padding-left: 35px; font-size: 0.85em; }
+#outline-list a.h4 { padding-left: 45px; font-size: 0.8em; color: var(--muted-text); }
+#outline-list a.h5 { padding-left: 55px; font-size: 0.8em; color: var(--muted-text); }
+#outline-list a.h6 { padding-left: 65px; font-size: 0.8em; color: var(--muted-text); }
+
+/* Footer (Status Bar) */
+#footer { height: var(--footer-height); background-color: var(--secondary-bg); border-top: var(--pane-border); padding: 0 15px; display: flex; align-items: center; font-size: 0.85em; color: var(--muted-text); position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; gap: 10px; }
+#status-sync { margin-left: auto; font-style: italic; font-weight: bold; padding: 1px 5px; border-radius: 3px; }
+.sync-saving { color: #b95000; background-color: #fff3e0; }
+.sync-saved { color: #155724; background-color: #d4edda; }
+.sync-error { color: #721c24; background-color: #f8d7da; }
+.sync-loading { color: #004085; background-color: #cce5ff; }
+
+/* Notifications */
+#notifications-container { position: fixed; top: calc(var(--header-height) + 10px); right: 15px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+.notification { background-color: var(--notification-bg); color: var(--notification-text); padding: 10px 15px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); opacity: 0; transform: translateX(100%); transition: opacity 0.5s ease, transform 0.5s ease; max-width: 300px; }
+.notification.show { opacity: 1; transform: translateX(0); }
+.notification.info { background-color: rgba(0, 123, 255, 0.8); }
+.notification.success { background-color: rgba(40, 167, 69, 0.8); }
+.notification.warning { background-color: rgba(255, 193, 7, 0.8); color: #333; }
+.notification.error { background-color: rgba(220, 53, 69, 0.8); }
+
+/* --- Harmonised heading sizes + progressive indent ----------------- */
+:root{
+    /* Tune these two vars if you ever want a different scale.          */
+    --base-heading-size: 1.8rem;   /* h1 size (≈ 25 px at 14 px root)  */
+    --indent-step:        1rem;    /* how much each deeper level shifts */
+}
+
+/* Helper – compute each level’s size once */
+@media (min-width:0){
+    :root{
+        --h1-size: calc(var(--base-heading-size));
+        --h2-size: calc(var(--base-heading-size) * 0.80); /* 80 % of h1 */
+        --h3-size: calc(var(--base-heading-size) * 0.65);
+        --h4-size: calc(var(--base-heading-size) * 0.55);
+        --h5-size: calc(var(--base-heading-size) * 0.48);
+        --h6-size: calc(var(--base-heading-size) * 0.42);
+    }
+}
+
+/* === Match editor heading scale + indent preview ======================= */
+.editor-preview h1,
+.editor-preview-side h1       { font-size: calc(1.375rem + 1.5vw) !important; margin-left: 0;       }
+
+.editor-preview h2,
+.editor-preview-side h2       { font-size: calc(1.325rem + 0.9vw) !important; margin-left: 1.2em;  }
+
+.editor-preview h3,
+.editor-preview-side h3       { font-size: calc(1.300rem + 0.6vw) !important; margin-left: 2.4em;  }
+
+.editor-preview h4,
+.editor-preview-side h4       { font-size: calc(1.275rem + 0.3vw) !important; margin-left: 3.6em;  }
+
+.editor-preview h5,
+.editor-preview-side h5       { font-size: 1.25rem               !important; margin-left: 4.8em;  }
+
+.editor-preview h6,
+.editor-preview-side h6       { font-size: 1rem                  !important; margin-left: 6em;    }
+/* ====================================================================== */

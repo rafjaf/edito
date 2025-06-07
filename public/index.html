@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edito</title>
+    <!-- EasyMDE Stylesheet -->
+    <link rel="stylesheet" href="/easymde/easymde.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="/font-awesome/css/all.min.css">
+</head>
+<body>
+    <header id="header">
+        <div class="app-title">Edito</div>
+        <div id="header-current-file">No file selected</div>
+        <div class="action-menu">
+            <button id="action-menu-button" aria-label="Actions"><i class="fas fa-bars"></i></button>
+            <div id="action-menu-dropdown" class="menu-dropdown hidden">
+                <a href="#" id="import-md">Import Markdown (.md)</a>
+                <a href="#" id="export-md">Export Markdown (.md)</a>
+                <a href="#" id="export-html">Export HTML</a>
+                <hr>
+                <a href="#" id="about">About</a>
+            </div>
+        </div>
+        <input type="file" id="import-file-input" accept=".md" style="display: none;">
+    </header>
+
+    <main id="main-container">
+        <aside id="file-pane">
+            <div class="file-actions">
+                <button id="create-folder-button" title="Create Folder"><i class="fas fa-folder-plus"></i></button>
+                <button id="create-file-button" title="Create File"><i class="fas fa-file-alt"></i></button>
+                <button id="rename-button" title="Rename Item" disabled><i class="fas fa-pencil-alt"></i></button>
+                <button id="delete-button" title="Delete Item" disabled><i class="fas fa-trash-alt"></i></button>
+            </div>
+            <nav id="file-list-container">
+                <ul id="file-list"></ul>
+                 <div id="current-folder-path">/</div>
+            </nav>
+        </aside>
+
+        <section id="editor-pane">
+            <textarea id="editor"></textarea>
+        </section>
+
+        <aside id="outline-pane">
+            <h2>Outline</h2>
+            <nav id="outline-list-container">
+                 <ul id="outline-list">
+                 </ul>
+            </nav>
+        </aside>
+    </main>
+
+    <footer id="status-bar">
+        <span id="status-file">No file selected</span> |
+        <span id="status-size">Size: 0 B</span> |
+        <span id="status-lines">Lines: 0</span> |
+        <span id="status-words">Words: 0</span> |
+        <span id="status-chars">Chars: 0</span>
+        <span id="status-sync" class="sync-status"></span>
+    </footer>
+
+    <div id="notifications-container">
+    </div>
+
+    <!-- Libraries -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/easymde/easymde.min.js"></script>
+
+    <!-- App script -->
+    <!-- <script src="script.js"></script> -->
+    <script src="main.js" type="module"></script>
+</body>
+</html>
