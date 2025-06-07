@@ -2,7 +2,7 @@
 
 A simple, self-hosted, file-based Markdown editor designed for small, trusted teams. Edit your markdown files directly on your server through a clean, modern web interface.
 
-![Edito Screenshot](https://raw.githubusercontent.com/rafjaf/edito/main/docs/screenshot.png)
+![Edito Screenshot](https://raw.githubusercontent.com/rafjaf/edito/master/docs/screenshot.png)
 
 ## About The Project
 
