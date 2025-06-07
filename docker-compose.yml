@@ -1,0 +1,22 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  edito:
+    # Build the Docker image from the Dockerfile in the current directory.
+    build: .
+    # Name the container for easy reference.
+    container_name: edito
+    # Restart the container automatically unless it is explicitly stopped.
+    restart: unless-stopped
+    ports:
+      # Map port 3000 on the host machine to port 3000 in the container.
+      # Format: "HOST:CONTAINER"
+      - "3000:3000"
+    volumes:
+      # Mount the local 'data' directory into the container at '/app/data'.
+      # This is a "bind mount". It ensures your markdown files are persistent
+      # and live on your host machine, not inside the container.
+      # The container can read and write to this directory.
+      - ./data:/app/data
