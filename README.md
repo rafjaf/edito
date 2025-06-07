@@ -33,54 +33,72 @@ The core philosophy of Edito is simplicity. It is designed with a specific use c
 *   **Backend:** Node.js, Express.js
 *   **Real-time:** Socket.IO, Chokidar (file system watcher)
 *   **Frontend:** Vanilla JavaScript (ESM), EasyMDE, Font Awesome
-*	Disclaimer : written with a lot of vibe coding with the help of Gemini and ChatGPT. Use at your own risks!
+*	**Disclaimer:** Written with a lot of vibe coding with the help of Gemini and ChatGPT. Use at your own risks!
 
-## Getting Started
+## Deployment
 
-Follow these instructions to get a local copy up and running.
+There are two ways to deploy Edito. Using Docker is the recommended method for a simple and reproducible setup.
 
-### Prerequisites
+### Using Docker (Recommended)
 
-You need to have Node.js and npm installed on your system.
-*   [Node.js](https://nodejs.org/) (which includes npm)
+This method uses Docker and Docker Compose to run Edito in an isolated container. Your markdown files are stored on your host machine in the `data` directory, ensuring they are safe and persistent.
 
-### Installation
+**Prerequisites:**
+*   [Docker](https://www.docker.com/get-started/)
+*   [Docker Compose](https://docs.docker.com/compose/install/)
+
+**Instructions:**
 
 1.  Clone the repository to your server:
     ```sh
     git clone https://github.com/rafjaf/edito.git
-    ```
-2.  Navigate to the project directory:
-    ```sh
     cd edito
     ```
-3.  Install the required NPM packages:
+2.  Create the data directory if it doesn't exist. This is where your files will be stored.
+    ```sh
+    mkdir -p data
+    ```
+3.  Build and start the container in the background:
+    ```sh
+    docker-compose up --build -d
+    ```
+4.  The application is now running! Access it in your browser at `http://localhost:3000`.
+
+**To stop the application:**
+```sh
+docker-compose down
+```
+
+### Manual Setup (Using Node.js)
+
+This method runs the application directly on your host machine using Node.js.
+
+**Prerequisites:**
+*   [Node.js](https://nodejs.org/) (which includes npm)
+
+**Instructions:**
+
+1.  Clone the repository and navigate into the directory:
+    ```sh
+    git clone https://github.com/rafjaf/edito.git
+    cd edito
+    ```
+2.  Install the required NPM packages:
     ```sh
     npm install
     ```
-    This will install Express, Socket.IO, and other dependencies listed in `package.json`.
+3.  Start the application:
+    ```sh
+    node server.js
+    ```
+4.  The server will start, and you can access the editor by navigating to `http://localhost:3000` in your web browser.
 
-### Configuration
-
-By default, Edito will create and manage files in a `data/` directory in the project's root. You can place your existing Markdown files and folders here before starting the server.
-
-## Usage
-
-To start the application, run the following command from the project's root directory:
-
-```sh
-node server.js
-```
-
-The server will start, and you can access the editor by navigating to `http://localhost:3000` in your web browser.
 
 ## A Note on Authentication
 
 **Edito does not include any built-in authentication or user management.** This is a deliberate design choice.
 
-You are expected to secure the application using a reverse proxy. This is a standard and highly secure practice for self-hosted services.
-
-Here are some popular reverse proxies that can provide authentication:
+You are expected to secure the application using a reverse proxy. This is a standard and highly secure practice for self-hosted services. Here are some popular options:
 *   **[Nginx](https://www.nginx.com/):** Use `ngx_http_auth_basic_module` for basic password protection or services like [Authelia](https://www.authelia.com/) for more advanced SSO.
 *   **[Caddy](https://caddyserver.com/):** Use the `basicauth` directive.
 *   **[Traefik](https://traefik.io/):** Use the `BasicAuth` middleware.
@@ -91,22 +109,17 @@ By placing Edito behind such a proxy, you ensure that only authorized users can 
 
 ```
 edito/
-├── data/                 # Your markdown files and folders go here
-├── node_modules/         # Dependencies (created by npm install)
+├── data/                 # Your markdown files and folders (mounted as a Docker volume)
+├── node_modules/         # Dependencies (used for local dev, ignored in Docker)
 ├── public/               # All frontend assets
 │   ├── css/
 │   │   └── style.css
-│   ├── modules/          # Modularized JavaScript files
-│   │   ├── api.js
-│   │   ├── config.js
-│   │   ├── editor.js
-│   │   ├── elements.js
-│   │   ├── state.js
-│   │   └── ui.js
-│   ├── index.html        # Main application page
-│   └── main.js           # Main JS entry point (type="module")
+│   └── modules/
+├── .dockerignore         # Specifies files to exclude from the Docker image
+├── .gitignore            # Specifies files for git to ignore
+├── Dockerfile            # Instructions to build the Docker image
+├── docker-compose.yml    # Defines the Docker service for easy deployment
 ├── package.json
-├── package-lock.json
 └── server.js             # The Node.js/Express backend
 ```
 
