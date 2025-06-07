@@ -33,7 +33,7 @@ The core philosophy of Edito is simplicity. It is designed with a specific use c
 *   **Backend:** Node.js, Express.js
 *   **Real-time:** Socket.IO, Chokidar (file system watcher)
 *   **Frontend:** Vanilla JavaScript (ESM), EasyMDE, Font Awesome
-*	Disclaimr : written with a lot of vibe coding with the help of Gemini and ChatGPT. Use at your own risks!
+*	Disclaimer : written with a lot of vibe coding with the help of Gemini and ChatGPT. Use at your own risks!
 
 ## Getting Started
 
