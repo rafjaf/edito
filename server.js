@@ -50,10 +50,11 @@ function isMarkdownPath(filePath) {
 
 function isValidItemName(name) {
     return typeof name === 'string'
-        && /^[a-zA-Z0-9_.-]+$/.test(name)
+        && name.trim() === name
+        && name.length > 0
         && name !== '.'
         && name !== '..'
-        && !name.includes('\0');
+        && !/[\0-\x1f\x7f/\\]/.test(name);
 }
 
 async function assertSafeExistingPath(resolvedPath, { allowDirectory = false, requireMarkdownFile = false } = {}) {

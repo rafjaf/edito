@@ -1,6 +1,6 @@
 // public/modules/api.js
 import { state } from './state.js';
-import { showNotification, setSyncStatus } from './ui.js';
+import { showNotification } from './ui.js';
 
 async function apiRequest(url, options = {}) {
     try {
@@ -36,11 +36,9 @@ export async function saveFile(filePath, content) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: filePath, content: content })
         });
-        state.currentContent = content;
-        setSyncStatus('saved');
     } catch (error) {
         state.ignoreNextWatcherEvent = false;
-        setSyncStatus('error');
+        throw error;
     } finally {
         state.isSaving = false;
     }

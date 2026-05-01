@@ -14,6 +14,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let saveTimeout = null;
     let statusBarUpdateTimeout = null;
     let outlineUpdateTimeout = null;
+    let saveQueue = Promise.resolve();
+
+    const isValidItemName = (name) => typeof name === 'string'
+        && name.trim() === name
+        && name.length > 0
+        && name !== '.'
+        && name !== '..'
+        && !/[\0-\x1f\x7f/\\]/.test(name);
 
     // --- Editor Change Handler ---
     const onEditorChange = (content) => {
@@ -23,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
         outlineUpdateTimeout = setTimeout(() => {
             ui.generateOutline(content, editor.handleTocClick);
         }, STATUS_UPDATE_DEBOUNCE);
-        debouncedSave();
+        debouncedSave(content);
     };
 
     // --- Core App Functions ---
@@ -64,6 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadFileContent(filePath, isExternalReload = false, preloadedContent = null) {
         ui.setSyncStatus('loading');
         try {
+            if (isExternalReload && filePath === state.currentFilePath && state.easymde.value() !== state.currentContent) {
+                await flushPendingSave();
+                return false;
+            }
+            if (!isExternalReload && !(await flushPendingSave())) {
+                return false;
+            }
             const content = preloadedContent ?? await api.fetchFileContent(filePath);
             if (isExternalReload && content === state.currentContent) {
                 ui.setSyncStatus('');
@@ -98,31 +113,68 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function debouncedSave() {
-        if (!state.currentFilePath) return;
+    function queueSave(filePath, content) {
+        const saveOperation = saveQueue
+            .catch(() => {})
+            .then(() => api.saveFile(filePath, content));
+        saveQueue = saveOperation.catch(() => {});
+        return saveOperation;
+    }
+
+    async function saveSnapshot(filePath, content) {
+        if (!filePath) return false;
+        ui.setSyncStatus('saving');
+        try {
+            await queueSave(filePath, content);
+            if (state.currentFilePath === filePath) {
+                state.currentContent = content;
+                if (state.easymde.value() === content) {
+                    ui.setSyncStatus('saved');
+                } else {
+                    ui.setSyncStatus('saving');
+                }
+            }
+            return true;
+        } catch (error) {
+            if (state.currentFilePath === filePath) {
+                ui.setSyncStatus('error');
+            }
+            return false;
+        }
+    }
+
+    async function flushPendingSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = null;
+
+        if (!state.currentFilePath) return true;
+        const filePath = state.currentFilePath;
+        const content = state.easymde.value();
+        if (content === state.currentContent && !state.isSaving) return true;
+        return await saveSnapshot(filePath, content);
+    }
+
+    function debouncedSave(content = state.easymde.value(), filePath = state.currentFilePath) {
+        if (!filePath) return;
         clearTimeout(saveTimeout);
         ui.setSyncStatus('saving');
         saveTimeout = setTimeout(async () => {
-            if (state.isSaving) {
-                debouncedSave();
-                return;
-            }
-            const content = state.easymde.value();
-            if (content === state.currentContent) {
+            saveTimeout = null;
+            if (state.currentFilePath === filePath && content === state.currentContent) {
                 ui.setSyncStatus('saved', 'No changes');
                 return;
             }
-            ui.setSyncStatus('saving');
-            await api.saveFile(state.currentFilePath, content);
+            await saveSnapshot(filePath, content);
         }, SAVE_DEBOUNCE);
     }
 
     // --- Event Handlers ---
     async function handleCreateItem(type, predefinedName = null) {
-        const name = predefinedName || prompt(type === 'folder' ? 'Enter folder name:' : 'Enter file name (without .md):');
+        const rawName = predefinedName || prompt(type === 'folder' ? 'Enter folder name:' : 'Enter file name (without .md):');
+        const name = rawName?.trim();
         if (!name || !name.trim()) return null;
-        if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
-            if (!predefinedName) ui.showNotification('Invalid characters in name.', 'warning');
+        if (!isValidItemName(name)) {
+            if (!predefinedName) ui.showNotification('Names cannot contain /, \\, or control characters.', 'warning');
             return null;
         }
         const finalName = (type === 'file' && !predefinedName) ? name.replace(/\.md$/i, '') : name;
@@ -141,13 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleRenameItem() {
         if (!state.currentFilePath) return;
         const currentName = state.currentFilePath.substring(state.currentFilePath.lastIndexOf('/') + 1);
-        const newName = prompt(`Enter new name for "${currentName}":`, currentName.replace('.md', ''));
+        const newName = prompt(`Enter new name for "${currentName}":`, currentName.replace('.md', ''))?.trim();
         if (!newName || !newName.trim() || newName === currentName.replace('.md', '')) return;
-        if (!/^[a-zA-Z0-9_.-]+$/.test(newName)) {
-            ui.showNotification('Invalid characters in name.', 'warning');
+        if (!isValidItemName(newName)) {
+            ui.showNotification('Names cannot contain /, \\, or control characters.', 'warning');
             return;
         }
         try {
+            if (!(await flushPendingSave())) return;
             ui.setSyncStatus('loading', `Renaming...`);
             const result = await api.renameItem(state.currentFilePath, newName);
             ui.showNotification(`Renamed to "${result.newPath}"`, 'success');
@@ -166,6 +219,9 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleDeleteItem() {
         if (!state.currentFilePath || !confirm(`Delete "${state.currentFilePath}"? This cannot be undone.`)) return;
         try {
+            clearTimeout(saveTimeout);
+            saveTimeout = null;
+            await saveQueue;
             ui.setSyncStatus('loading', `Deleting...`);
             await api.deleteItem(state.currentFilePath);
             ui.showNotification(`"${state.currentFilePath}" deleted.`, 'success');
