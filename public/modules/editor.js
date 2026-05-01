@@ -3,71 +3,123 @@ import { state } from './state.js';
 import { elements } from './elements.js';
 import { TOC_CLICK_OFFSET } from './config.js';
 
-let scrollSyncTimeout = null;
+const LS_LIVE_PREVIEW    = 'edito-live-preview';
+const LS_LEGAL_NUMBERING = 'edito-legal-numbering';
 
-function buildScrollMap(content) {
-    requestAnimationFrame(() => {
-        if (!state.easymde.isPreviewActive()) {
-            state.scrollMap = [];
-            return;
-        }
-        const preview = elements.editorPane.querySelector('.editor-preview-side, .editor-preview');
-        if (!preview) {
-            state.scrollMap = [];
-            return;
-        }
-        const sourceHeadings = [];
-        const headingRx = /^(#{1,6})\s+(.*)$/gm;
-        let match;
-        while ((match = headingRx.exec(content)) !== null) {
-            sourceHeadings.push({ line: (content.slice(0, match.index).match(/\n/g) || []).length });
-        }
-        const headingsInPreview = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        const newLinkedMap = [];
-        const limit = Math.min(sourceHeadings.length, headingsInPreview.length);
-        for (let i = 0; i < limit; i++) {
-            newLinkedMap.push({ line: sourceHeadings[i].line, offset: headingsInPreview[i].offsetTop });
-        }
-        state.scrollMap = newLinkedMap;
-    });
+let livePreviewActive    = localStorage.getItem(LS_LIVE_PREVIEW) === 'true';
+let legalNumberingActive = localStorage.getItem(LS_LEGAL_NUMBERING) === 'true';
+let livePreviewBtn       = null;
+let legalBtn             = null;
+let activeParagraphLines = [];
+let headingUpdateTimeout = null;
+
+const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
+const HEADING_RX = /^(#{1,6})\s/;
+
+// ── Paragraph tracking ────────────────────────────────────────────────
+function findParagraphBounds(cm, line) {
+    const lineCount = cm.lineCount();
+    let start = line, end = line;
+    while (start > 0 && cm.getLine(start - 1).trim() !== '') start--;
+    while (end < lineCount - 1 && cm.getLine(end + 1).trim() !== '') end++;
+    return { start, end };
 }
 
-function syncPreviewScroll() {
-    if (!state.easymde.isSideBySideActive() || state.scrollMap.length < 1) return;
+function updateActiveParagraph(cm) {
+    activeParagraphLines.forEach(l => cm.removeLineClass(l, 'wrap', 'lp-active-para'));
+    activeParagraphLines = [];
+    if (!livePreviewActive) return;
+    const sels   = cm.listSelections();
+    const first  = sels[0].from().line;
+    const last   = sels[sels.length - 1].to().line;
+    const { start } = findParagraphBounds(cm, first);
+    const { end }   = findParagraphBounds(cm, last);
+    for (let l = start; l <= end; l++) {
+        cm.addLineClass(l, 'wrap', 'lp-active-para');
+        activeParagraphLines.push(l);
+    }
+}
+
+// ── Heading line classes (drive CSS counters for legal numbering) ─────
+function updateHeadingClasses(cm) {
+    const n = cm.lineCount();
+    for (let i = 0; i < n; i++) {
+        HEADING_LEVELS.forEach(cls => cm.removeLineClass(i, 'wrap', cls));
+        const m = HEADING_RX.exec(cm.getLine(i));
+        if (m) cm.addLineClass(i, 'wrap', `lp-heading-${m[1].length}`);
+    }
+}
+
+function scheduleHeadingUpdate(cm) {
+    if (!legalNumberingActive) return;
+    clearTimeout(headingUpdateTimeout);
+    headingUpdateTimeout = setTimeout(() => updateHeadingClasses(cm), 300);
+}
+
+// ── Live preview toggle ───────────────────────────────────────────────
+function setLivePreview(active) {
+    livePreviewActive = active;
+    localStorage.setItem(LS_LIVE_PREVIEW, active);
+    const pane = elements.editorPane;
+    if (active) {
+        pane.classList.add('lp-mode');
+        updateActiveParagraph(state.easymde.codemirror);
+        if (livePreviewBtn) { livePreviewBtn.classList.add('active'); livePreviewBtn.title = 'Exit Live Preview'; }
+    } else {
+        pane.classList.remove('lp-mode');
+        activeParagraphLines.forEach(l => state.easymde.codemirror.removeLineClass(l, 'wrap', 'lp-active-para'));
+        activeParagraphLines = [];
+        if (livePreviewBtn) { livePreviewBtn.classList.remove('active'); livePreviewBtn.title = 'Live Preview'; }
+    }
+    // Let CodeMirror recalculate line heights (headings change size)
+    requestAnimationFrame(() => state.easymde.codemirror.refresh());
+}
+
+// ── Legal numbering toggle ────────────────────────────────────────────
+function setLegalNumbering(active) {
+    legalNumberingActive = active;
+    localStorage.setItem(LS_LEGAL_NUMBERING, active);
+    const cm = state.easymde?.codemirror;
+    if (active) {
+        document.body.classList.add('legal-numbering');
+        if (cm) updateHeadingClasses(cm);
+        if (legalBtn) { legalBtn.classList.add('active'); legalBtn.title = 'Remove Legal Numbering'; }
+    } else {
+        document.body.classList.remove('legal-numbering');
+        // Remove heading classes — they are only needed for the CSS counters
+        if (cm) {
+            for (let i = 0; i < cm.lineCount(); i++)
+                HEADING_LEVELS.forEach(cls => cm.removeLineClass(i, 'wrap', cls));
+        }
+        if (legalBtn) { legalBtn.classList.remove('active'); legalBtn.title = 'Legal Numbering'; }
+    }
+}
+
+// ── Public API ────────────────────────────────────────────────────────
+export function buildScrollMap() { state.scrollMap = []; }
+
+// Called by main.js after a file is loaded or cleared
+export function refreshState() {
+    if (!state.easymde) return;
     const cm = state.easymde.codemirror;
-    const preview = elements.editorPane.querySelector('.editor-preview-side');
-    if (!preview) return;
-
-    const scrollInfo = cm.getScrollInfo();
-    const editorTopLine = cm.lineAtHeight(scrollInfo.top, 'local');
-    let currentEntry = null, nextEntry = null;
-    for (const entry of state.scrollMap) {
-        if (entry.line > editorTopLine) { nextEntry = entry; break; }
-        currentEntry = entry;
-    }
-    if (!currentEntry) { preview.scrollTop = 0; return; }
-
-    let targetScrollTop = currentEntry.offset;
-    if (nextEntry) {
-        const linesBetween = nextEntry.line - currentEntry.line;
-        const linesScrolled = editorTopLine - currentEntry.line;
-        const scrollPercentage = linesBetween > 0 ? (linesScrolled / linesBetween) : 0;
-        const pixelsBetween = nextEntry.offset - currentEntry.offset;
-        targetScrollTop += (pixelsBetween * scrollPercentage);
-    }
-    preview.scrollTop = targetScrollTop;
-}
-
-function blockBuiltInSideBySideSync() {
-    const scroller = state.easymde.codemirror.getScrollerElement();
-    if (scroller.__syncBlocked) return;
-    const stop = e => e.stopImmediatePropagation();
-    scroller.addEventListener('scroll', stop, true);
-    elements.editorPane.addEventListener('scroll', stop, true);
-    scroller.__syncBlocked = true;
+    if (legalNumberingActive) updateHeadingClasses(cm);
+    updateActiveParagraph(cm);
 }
 
 export function initEditor(onChangeCallback) {
+    const livePreviewToolbarBtn = {
+        name: 'live-preview',
+        action: () => setLivePreview(!livePreviewActive),
+        className: 'fa fa-eye',
+        title: 'Live Preview',
+    };
+    const legalNumberingToolbarBtn = {
+        name: 'legal-numbering',
+        action: () => setLegalNumbering(!legalNumberingActive),
+        className: 'fa fa-list-ol',
+        title: 'Legal Numbering',
+    };
+
     state.easymde = new EasyMDE({
         element: document.getElementById('editor'),
         initialValue: '<!-- Select or create a file to begin -->',
@@ -77,71 +129,43 @@ export function initEditor(onChangeCallback) {
         maxHeight: '100%',
         sideBySideFullscreen: false,
         syncSideBySide: false,
-        toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "image", "table", "|", "preview", "side-by-side", "|", "guide"],
+        toolbar: [
+            'bold', 'italic', 'heading', '|',
+            'quote', 'unordered-list', 'ordered-list', '|',
+            'link', 'image', 'table', '|',
+            livePreviewToolbarBtn, '|',
+            legalNumberingToolbarBtn, '|',
+            'guide'
+        ],
         codemirror: { indentUnit: 4, indentWithTabs: false, tabSize: 4 }
     });
 
-    const editorScroller = state.easymde.codemirror.getScrollerElement();
-    editorScroller.addEventListener('scroll', () => {
-        clearTimeout(scrollSyncTimeout);
-        scrollSyncTimeout = setTimeout(syncPreviewScroll, 50);
+    const cm = state.easymde.codemirror;
+
+    setTimeout(() => {
+        livePreviewBtn = elements.editorPane.querySelector('.fa-eye')?.closest('button');
+        legalBtn       = elements.editorPane.querySelector('.fa-list-ol')?.closest('button');
+        if (livePreviewActive)    setLivePreview(true);
+        if (legalNumberingActive) setLegalNumbering(true);
+    }, 0);
+
+    cm.on('cursorActivity', () => updateActiveParagraph(cm));
+    cm.on('change', () => {
+        scheduleHeadingUpdate(cm);
+        onChangeCallback(state.easymde.value());
     });
-
-    blockBuiltInSideBySideSync();
-
-    const observer = new MutationObserver(() => {
-        const sideBySideButton = elements.editorPane.querySelector('button[title^="Toggle Side by Side"]');
-        if (sideBySideButton) {
-            observer.disconnect();
-            sideBySideButton.addEventListener('click', () => {
-                setTimeout(() => {
-                    const editorWrapper = elements.editorPane.querySelector('.CodeMirror-wrap');
-                    const preview = elements.editorPane.querySelector('.editor-preview-side');
-                    if (editorWrapper && preview) preview.style.height = `${editorWrapper.offsetHeight}px`;
-                    state.easymde.codemirror.refresh();
-                    buildScrollMap(state.easymde.value());
-                }, 50);
-            });
-        }
-    });
-    observer.observe(elements.editorPane, { childList: true, subtree: true });
-
-    state.easymde.codemirror.on('change', () => onChangeCallback(state.easymde.value()));
 
     return state.easymde;
 }
 
 export function handleTocClick(e) {
     e.preventDefault();
-    const a = e.currentTarget;
+    const a  = e.currentTarget;
     const line = Number(a.dataset.line);
-    const levelTxt = a.dataset.lvl;
-    const headingTxt = a.dataset.txt;
     const cm = state.easymde.codemirror;
-
     cm.setCursor({ line, ch: 0 });
     cm.getInputField().focus({ preventScroll: true });
     const scroller = cm.getScrollerElement();
     scroller.scrollTop = Math.max(0, cm.charCoords({ line, ch: 0 }, 'local').top - TOC_CLICK_OFFSET);
     elements.editorPane.scrollTop = 0;
-
-    if (state.easymde.isSideBySideActive() || state.easymde.isPreviewActive()) {
-        requestAnimationFrame(() => {
-            const previewSel = state.easymde.isSideBySideActive() ? '.editor-preview-side' : '.editor-preview';
-            const preview = elements.editorPane.querySelector(previewSel);
-            if (!preview) return;
-            const headings = preview.querySelectorAll(`h${levelTxt}`);
-            const target = Array.from(headings).find(h => h.textContent.trim() === headingTxt);
-            if (target) {
-                if (state.easymde.isSideBySideActive()) {
-                    preview.scrollTop = Math.max(0, target.offsetTop - TOC_CLICK_OFFSET);
-                } else {
-                    target.scrollIntoView({ block: 'start' });
-                    window.scrollBy(0, -TOC_CLICK_OFFSET);
-                }
-            }
-        });
-    }
 }
-
-export { buildScrollMap };

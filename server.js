@@ -162,6 +162,9 @@ app.post('/api/files/create', async (req, res) => {
 app.post('/api/files/rename', async (req, res) => {
     const oldPathRelative = req.body.oldPath;
     const newName = req.body.newName;
+    if (!oldPathRelative || typeof oldPathRelative !== 'string') {
+        return res.status(400).json({ error: 'Invalid path' });
+    }
     const oldPathFull = path.join(DATA_DIR, oldPathRelative);
     const parentDir = path.dirname(oldPathFull);
 
@@ -212,6 +215,9 @@ app.post('/api/files/rename', async (req, res) => {
 // Delete file or folder
 app.post('/api/files/delete', async (req, res) => {
     const itemPathRelative = req.body.path;
+    if (!itemPathRelative || typeof itemPathRelative !== 'string') {
+        return res.status(400).json({ error: 'Invalid path' });
+    }
     const itemPathFull = path.join(DATA_DIR, itemPathRelative);
 
     // Security Check

@@ -52,17 +52,23 @@ export function generateOutline(content, onTocClick) {
     let match;
     while ((match = headingRx.exec(content)) !== null) {
         const level = match[1].length;
-        const title = match[2].trim();
+        const rawTitle = match[2].trim();
+        // Strip bold markers (**...**  or __...__), keep the inner text
+        const strippedBold = rawTitle.replace(/(\*\*|__)(.+?)\1/g, '$2');
+        // Keep plain text for dataset (for scroll-to)
+        const plainTitle = strippedBold.replace(/\*(.+?)\*/g, '$1');
         const lineNumber = (content.slice(0, match.index).match(/\n/g) || []).length;
         const a = document.createElement('a');
-        a.textContent = title;
+        // Build inner HTML: render *italic* as <em>
+        a.innerHTML = strippedBold.replace(/\*(.+?)\*/g, '<em>$1</em>');
         a.href = 'javascript:void(0)';
         a.className = `h${level}`;
         a.dataset.line = lineNumber;
         a.dataset.lvl = level;
-        a.dataset.txt = title;
+        a.dataset.txt = plainTitle;
         a.addEventListener('click', onTocClick);
         const li = document.createElement('li');
+        li.dataset.level = level;
         li.appendChild(a);
         elements.outlineList.appendChild(li);
     }

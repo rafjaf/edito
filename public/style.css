@@ -15,6 +15,8 @@
     --button-hover-bg: #dee2e6;
     --notification-bg: rgba(0, 0, 0, 0.7);
     --notification-text: #fff;
+    /* Shared toolbar row height — must match EasyMDE toolbar height */
+    --toolbar-row-height: 42px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,7 +45,7 @@ a { cursor: pointer; }
 
 /* File Pane (Left) */
 #file-pane { width: 15%; min-width: 180px; background-color: var(--secondary-bg); border-right: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
-.file-actions { padding: 10px; border-bottom: var(--pane-border); display: flex; gap: 10px; flex-shrink: 0; }
+.file-actions { padding: 0 10px; border-bottom: var(--pane-border); display: flex; gap: 10px; flex-shrink: 0; align-items: center; height: var(--toolbar-row-height); box-sizing: border-box; }
 .file-actions button { background: var(--button-bg); border: 1px solid #ccc; border-radius: 3px; padding: 5px 8px; cursor: pointer; font-size: 1.1em; color: var(--icon-color); }
 .file-actions button:hover:not(:disabled) { background: var(--button-hover-bg); }
 .file-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -61,7 +63,7 @@ a { cursor: pointer; }
 /* --- EasyMDE Integration Styles --- */
 #editor { display: none; }
 .EasyMDEContainer { display: flex; flex-direction: column; height: 100%; border: none !important; box-shadow: none !important; min-height: 0; }
-.editor-toolbar { flex-shrink: 0; border-bottom: 1px solid #ddd; }
+.editor-toolbar { flex-shrink: 0; border-bottom: var(--pane-border) !important; height: var(--toolbar-row-height); box-sizing: border-box; display: flex; align-items: center; }
 .CodeMirror-wrap { flex-grow: 1; min-height: 0; position: relative; }
 .CodeMirror { height: 100% !important; font-size: 16px; line-height: 1.6; }
 .editor-preview, .editor-preview-side {
@@ -88,7 +90,7 @@ a { cursor: pointer; }
 
 /* Outline Pane (Right) */
 #outline-pane { width: 15%; min-width: 150px; background-color: var(--secondary-bg); border-left: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
-#outline-pane h2 { font-size: 1.1em; padding: 10px 15px; margin: 0; border-bottom: var(--pane-border); flex-shrink: 0; }
+#outline-pane h2 { font-size: 1.1em; padding: 0 15px; margin: 0; border-bottom: var(--pane-border); flex-shrink: 0; display: flex; align-items: center; height: var(--toolbar-row-height); box-sizing: border-box; }
 #outline-list-container { flex-grow: 1; overflow-y: auto; padding: 10px 0; }
 #outline-list { list-style: none; padding: 0; margin: 0; }
 #outline-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -156,3 +158,92 @@ a { cursor: pointer; }
 .editor-preview h6,
 .editor-preview-side h6       { font-size: 1rem                  !important; margin-left: 6em;    }
 /* ====================================================================== */
+
+/* Resize handles */
+.resize-handle { width: 4px; flex-shrink: 0; background: var(--pane-border); cursor: col-resize; transition: background 0.15s; }
+.resize-handle:hover, .resize-handle:active { background: #aaa; }
+
+/* About modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 500; display: flex; align-items: center; justify-content: center; }
+.modal-overlay.hidden { display: none; }
+.modal-box { background: var(--secondary-bg); border-radius: 6px; padding: 30px 35px; min-width: 320px; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 12px; }
+.modal-box h2 { font-size: 1.6em; margin: 0; }
+.modal-box p { margin: 0; line-height: 1.5; }
+.modal-box a { color: var(--link-color); }
+.modal-license { font-size: 0.85em; color: var(--muted-text); }
+.modal-close-btn { align-self: flex-end; margin-top: 8px; padding: 6px 18px; background: var(--button-bg); border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.95em; }
+.modal-close-btn:hover { background: var(--button-hover-bg); }
+
+/* Legal numbering — applied when body.legal-numbering is set */
+
+/* CSS counters ride on CodeMirror line-wrapper divs tagged by JS */
+body.legal-numbering .CodeMirror-code { counter-reset: lh1 lh2 lh3 lh4 lh5 lh6; }
+body.legal-numbering .lp-heading-1 { counter-increment: lh1; counter-reset: lh2 lh3 lh4 lh5 lh6; }
+body.legal-numbering .lp-heading-2 { counter-increment: lh2; counter-reset: lh3 lh4 lh5 lh6; }
+body.legal-numbering .lp-heading-3 { counter-increment: lh3; counter-reset: lh4 lh5 lh6; }
+body.legal-numbering .lp-heading-4 { counter-increment: lh4; counter-reset: lh5 lh6; }
+body.legal-numbering .lp-heading-5 { counter-increment: lh5; counter-reset: lh6; }
+body.legal-numbering .lp-heading-6 { counter-increment: lh6; }
+
+/* Show counter prefix only in lp-mode for inactive (rendered) headings */
+body.legal-numbering #editor-pane.lp-mode .lp-heading-1:not(.lp-active-para) .cm-header-1:not(.cm-formatting)::before { content: counter(lh1) ".\00a0"; }
+body.legal-numbering #editor-pane.lp-mode .lp-heading-2:not(.lp-active-para) .cm-header-2:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) ".\00a0"; }
+body.legal-numbering #editor-pane.lp-mode .lp-heading-3:not(.lp-active-para) .cm-header-3:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) ".\00a0"; }
+body.legal-numbering #editor-pane.lp-mode .lp-heading-4:not(.lp-active-para) .cm-header-4:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) ".\00a0"; }
+body.legal-numbering #editor-pane.lp-mode .lp-heading-5:not(.lp-active-para) .cm-header-5:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) "." counter(lh5) ".\00a0"; }
+body.legal-numbering #editor-pane.lp-mode .lp-heading-6:not(.lp-active-para) .cm-header-6:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) "." counter(lh5) "." counter(lh6) ".\00a0"; }
+
+/* Outline */
+body.legal-numbering #outline-list { counter-reset: ol-h1 ol-h2 ol-h3 ol-h4 ol-h5 ol-h6; }
+body.legal-numbering #outline-list li[data-level="1"] { counter-increment: ol-h1; counter-reset: ol-h2 ol-h3 ol-h4 ol-h5 ol-h6; }
+body.legal-numbering #outline-list li[data-level="2"] { counter-increment: ol-h2; counter-reset: ol-h3 ol-h4 ol-h5 ol-h6; }
+body.legal-numbering #outline-list li[data-level="3"] { counter-increment: ol-h3; counter-reset: ol-h4 ol-h5 ol-h6; }
+body.legal-numbering #outline-list li[data-level="4"] { counter-increment: ol-h4; counter-reset: ol-h5 ol-h6; }
+body.legal-numbering #outline-list li[data-level="5"] { counter-increment: ol-h5; counter-reset: ol-h6; }
+body.legal-numbering #outline-list li[data-level="6"] { counter-increment: ol-h6; }
+body.legal-numbering #outline-list li[data-level="1"] a::before { content: counter(ol-h1) ".\00a0"; }
+body.legal-numbering #outline-list li[data-level="2"] a::before { content: counter(ol-h1) "." counter(ol-h2) ".\00a0"; }
+body.legal-numbering #outline-list li[data-level="3"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) ".\00a0"; }
+body.legal-numbering #outline-list li[data-level="4"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) ".\00a0"; }
+body.legal-numbering #outline-list li[data-level="5"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) ".\00a0"; }
+body.legal-numbering #outline-list li[data-level="6"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) "." counter(ol-h6) ".\00a0"; }
+
+/* ── Live Preview mode (lp-mode) ─────────────────────────────────────── */
+/* The CodeMirror editor stays active at all times. In lp-mode, markdown
+   syntax characters are hidden with font-size:0 (keeps layout intact so
+   CodeMirror's cursor-coordinate mapping stays correct). The currently
+   edited paragraph restores raw markdown so you can see and edit it. */
+
+/* 1. Hide syntax characters */
+#editor-pane.lp-mode .cm-formatting-header,
+#editor-pane.lp-mode .cm-formatting-strong,
+#editor-pane.lp-mode .cm-formatting-em,
+#editor-pane.lp-mode .cm-formatting-code,
+#editor-pane.lp-mode .cm-formatting-link,
+#editor-pane.lp-mode .cm-formatting-link-string,
+#editor-pane.lp-mode .cm-url { font-size: 0 !important; }
+
+/* 2. Visual rendering of markdown elements */
+#editor-pane.lp-mode .cm-header-1:not(.cm-formatting) { font-size: 1.8em !important; font-weight: bold; line-height: 1.4; }
+#editor-pane.lp-mode .cm-header-2:not(.cm-formatting) { font-size: 1.5em !important; font-weight: bold; line-height: 1.4; }
+#editor-pane.lp-mode .cm-header-3:not(.cm-formatting) { font-size: 1.25em !important; font-weight: bold; }
+#editor-pane.lp-mode .cm-header-4:not(.cm-formatting) { font-size: 1.1em !important; font-weight: bold; }
+/* cm-strong is already bold; cm-em is already italic — no extra rule needed */
+/* Link text */
+#editor-pane.lp-mode .cm-link:not(.cm-formatting) { color: var(--link-color); text-decoration: underline; }
+
+/* 3. Active paragraph: show raw markdown at normal size */
+#editor-pane.lp-mode .lp-active-para .cm-formatting-header,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-strong,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-em,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-code,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-link,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-link-string,
+#editor-pane.lp-mode .lp-active-para .cm-url { font-size: inherit !important; }
+
+/* Reset heading sizes in active paragraph (show raw `# Heading` at body size) */
+#editor-pane.lp-mode .lp-active-para .cm-header-1,
+#editor-pane.lp-mode .lp-active-para .cm-header-2,
+#editor-pane.lp-mode .lp-active-para .cm-header-3,
+#editor-pane.lp-mode .lp-active-para .cm-header-4 { font-size: inherit !important; font-weight: normal !important; }
+

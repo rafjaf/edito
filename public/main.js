@@ -5,6 +5,8 @@ import { elements } from './modules/elements.js';
 import * as ui from './modules/ui.js';
 import * as editor from './modules/editor.js';
 import * as api from './modules/api.js';
+import { initResizablePanes } from './modules/resize.js';
+import { refreshState } from './modules/editor.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -20,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBarUpdateTimeout = setTimeout(() => ui.updateStatusBar(content), STATUS_UPDATE_DEBOUNCE);
         outlineUpdateTimeout = setTimeout(() => {
             ui.generateOutline(content, editor.handleTocClick);
-            editor.buildScrollMap(content);
         }, STATUS_UPDATE_DEBOUNCE);
         debouncedSave();
     };
@@ -32,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.easymde.value('');
         state.easymde.codemirror.clearHistory();
         ui.clearEditorUI();
-        editor.buildScrollMap('');
+        refreshState();
     }
 
     async function loadFileList(folderPath = '') {
@@ -76,8 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.headerCurrentFile.textContent = filePath;
             ui.updateStatusBar(content);
             ui.generateOutline(content, editor.handleTocClick);
-            editor.buildScrollMap(content);
             ui.updateActionButtons();
+            refreshState();
             
             // Highlight the active file in the list
             document.querySelectorAll('#file-list li.active').forEach(li => li.classList.remove('active'));
@@ -223,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('connect', () => ui.showNotification('Connected', 'success', 1500));
     socket.on('disconnect', () => ui.showNotification('Disconnected', 'error'));
     socket.on('file-changed', (data) => {
-        if (state.ignoreNextWatcherEvent) { return; }
+        if (state.ignoreNextWatcherEvent) { state.ignoreNextWatcherEvent = false; return; }
         const changeParentDir = data.path.includes('/') ? data.path.substring(0, data.path.lastIndexOf('/')) : '';
         const changeName = data.path.substring(data.path.lastIndexOf('/') + 1);
         if (changeParentDir === state.currentFolder) {
@@ -274,14 +275,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.aboutButton.addEventListener('click', (e) => {
         e.preventDefault();
-        alert('Edito v1.0\nA simple self-hosted Markdown editor powered by EasyMDE.');
+        document.getElementById('about-modal').classList.remove('hidden');
         elements.actionMenuDropdown.classList.add('hidden');
+    });
+    document.getElementById('about-modal-close').addEventListener('click', () => {
+        document.getElementById('about-modal').classList.add('hidden');
+    });
+    document.getElementById('about-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
     });
 
 
     // --- Initial Load ---
     editor.initEditor(onEditorChange);
+    window._editorInstance = state.easymde;
     ui.setToolbarHeightVar();
+    initResizablePanes();
     loadFileList();
     ui.clearEditorUI();
 });

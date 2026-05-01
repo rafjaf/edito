@@ -5,14 +5,17 @@
 .gitignore
 
 # Ignore local node_modules (they will be installed inside the container)
-node_modules
+node_modules/
 
 # Ignore the Dockerfile and compose file itself
 Dockerfile
 docker-compose.yml
 
 # Ignore the data directory, as it will be mounted as a volume
-data
+data/
+
+# Also ignore docs
+docs/
 
 # Ignore any local development or OS files
 .DS_Store
