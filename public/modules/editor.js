@@ -3,12 +3,10 @@ import { state } from './state.js';
 import { elements } from './elements.js';
 import { TOC_CLICK_OFFSET } from './config.js';
 
-const LS_LIVE_PREVIEW    = 'edito-live-preview';
 const LS_LEGAL_NUMBERING = 'edito-legal-numbering';
 
-let livePreviewActive    = localStorage.getItem(LS_LIVE_PREVIEW) === 'true';
+let livePreviewActive    = true;
 let legalNumberingActive = localStorage.getItem(LS_LEGAL_NUMBERING) === 'true';
-let livePreviewBtn       = null;
 let legalBtn             = null;
 // Store CodeMirror line *handles* so they survive edits/undos
 let activeParaHandles    = [];
@@ -16,13 +14,32 @@ let headingUpdateTimeout = null;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const HEADING_RX = /^(#{1,6})\s/;
+const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
+const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+const LINK_TOOLTIP = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+    ? 'Cmd-click to open link in a new tab'
+    : 'Ctrl-click to open link in a new tab';
 
 // ── Paragraph tracking ────────────────────────────────────────────────
-function findParagraphBounds(cm, lineNo) {
+function findMarkdownBlockBounds(cm, lineNo) {
     const last = cm.lastLine();
+    const line = cm.getLine(lineNo);
+
+    if (!line || line.trim() === '' || BLOCK_BOUNDARY_RX.test(line)) {
+        return { start: lineNo, end: lineNo };
+    }
+
     let start = lineNo, end = lineNo;
-    while (start > 0 && cm.getLine(start - 1).trim() !== '') start--;
-    while (end < last && cm.getLine(end + 1).trim() !== '') end++;
+    while (start > 0) {
+        const previous = cm.getLine(start - 1);
+        if (!previous || previous.trim() === '' || BLOCK_BOUNDARY_RX.test(previous)) break;
+        start--;
+    }
+    while (end < last) {
+        const next = cm.getLine(end + 1);
+        if (!next || next.trim() === '' || BLOCK_BOUNDARY_RX.test(next)) break;
+        end++;
+    }
     return { start, end };
 }
 
@@ -32,18 +49,25 @@ function updateActiveParagraph(cm) {
         activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
         activeParaHandles = [];
         if (!livePreviewActive) return;
-        const sels  = cm.listSelections();
-        const first = sels[0].from().line;
-        const last  = sels[sels.length - 1].to().line;
-        const { start } = findParagraphBounds(cm, first);
-        const { end }   = findParagraphBounds(cm, last);
-        for (let l = start; l <= end; l++) {
-            const handle = cm.getLineHandle(l);
-            if (handle) {
-                cm.addLineClass(handle, 'wrap', 'lp-active-para');
-                activeParaHandles.push(handle);
+        const activeLineHandles = new Set();
+        cm.listSelections().forEach((selection) => {
+            const firstLine = selection.from().line;
+            const lastLine = selection.to().line;
+            const seenLines = new Set();
+            for (let selectedLine = firstLine; selectedLine <= lastLine; selectedLine++) {
+                if (seenLines.has(selectedLine)) continue;
+                const { start, end } = findMarkdownBlockBounds(cm, selectedLine);
+                for (let l = start; l <= end; l++) {
+                    seenLines.add(l);
+                    const handle = cm.getLineHandle(l);
+                    if (handle) activeLineHandles.add(handle);
+                }
             }
-        }
+        });
+        activeLineHandles.forEach((handle) => {
+            cm.addLineClass(handle, 'wrap', 'lp-active-para');
+            activeParaHandles.push(handle);
+        });
     });
 }
 
@@ -67,25 +91,87 @@ function scheduleHeadingUpdate(cm) {
     headingUpdateTimeout = setTimeout(() => updateHeadingClasses(cm), 300);
 }
 
-// ── Live preview toggle ───────────────────────────────────────────────
-function setLivePreview(active) {
-    livePreviewActive = active;
-    localStorage.setItem(LS_LIVE_PREVIEW, String(active));
-    const pane = elements.editorPane;
-    if (active) {
-        pane.classList.add('lp-mode');
-        updateActiveParagraph(state.easymde.codemirror);
-        if (livePreviewBtn) { livePreviewBtn.classList.add('active'); livePreviewBtn.title = 'Exit Live Preview'; }
-    } else {
-        // Remove active-para classes before removing lp-mode so no flash
-        const cm = state.easymde.codemirror;
-        cm.operation(() => {
-            activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
-        });
-        activeParaHandles = [];
-        pane.classList.remove('lp-mode');
-        if (livePreviewBtn) { livePreviewBtn.classList.remove('active'); livePreviewBtn.title = 'Live Preview'; }
+// ── Live preview links ────────────────────────────────────────────────
+function getInlineLinkAt(cm, pos) {
+    const line = cm.getLine(pos.line);
+    if (!line) return null;
+
+    INLINE_LINK_RX.lastIndex = 0;
+    let match;
+    while ((match = INLINE_LINK_RX.exec(line))) {
+        const markerOffset = match[0].startsWith('!') ? 1 : 0;
+        const textStart = match.index + markerOffset + 1;
+        const textEnd = textStart + match[1].length;
+        if (pos.ch >= textStart && pos.ch <= textEnd) {
+            return { text: match[1], href: normalizeLinkTarget(match[2]) };
+        }
     }
+    return null;
+}
+
+function getInlineLinkByText(cm, lineNo, text) {
+    const line = cm.getLine(lineNo);
+    if (!line || !text) return null;
+
+    INLINE_LINK_RX.lastIndex = 0;
+    const matches = [];
+    let match;
+    while ((match = INLINE_LINK_RX.exec(line))) {
+        if (match[1] === text) matches.push({ text: match[1], href: normalizeLinkTarget(match[2]) });
+    }
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function normalizeLinkTarget(rawHref) {
+    const href = rawHref.trim();
+    if (href.startsWith('#xml=')) return href.slice(5);
+    if (href.startsWith('xml=')) return href.slice(4);
+    try {
+        return new URL(href, window.location.href).href;
+    } catch {
+        return href;
+    }
+}
+
+function getMouseLink(cm, event) {
+    if (!(event.target instanceof Element)) return null;
+    const target = event.target.closest('.cm-link:not(.cm-formatting)');
+    if (!target) return null;
+    const pos = cm.coordsChar({ left: event.clientX, top: event.clientY }, 'client');
+    return getInlineLinkAt(cm, pos) || getInlineLinkByText(cm, pos.line, target.textContent);
+}
+
+function initLivePreviewLinks(cm) {
+    const wrapper = cm.getWrapperElement();
+
+    cm.on('mousemove', (_cm, event) => {
+        const link = getMouseLink(cm, event);
+        wrapper.title = link ? LINK_TOOLTIP : '';
+        if (event.target instanceof Element) event.target.title = link ? LINK_TOOLTIP : '';
+        wrapper.classList.toggle('lp-link-hover', Boolean(link));
+    });
+
+    cm.on('mouseout', () => {
+        wrapper.title = '';
+        wrapper.classList.remove('lp-link-hover');
+    });
+
+    cm.on('mousedown', (_cm, event) => {
+        if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return;
+        const link = getMouseLink(cm, event);
+        if (!link) return;
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(link.href, '_blank', 'noopener');
+    });
+}
+
+// ── Live preview ──────────────────────────────────────────────────────
+function enableLivePreview() {
+    livePreviewActive = true;
+    const pane = elements.editorPane;
+    pane.classList.add('lp-mode');
+    if (state.easymde) updateActiveParagraph(state.easymde.codemirror);
 }
 
 // ── Legal numbering toggle ────────────────────────────────────────────
@@ -117,17 +203,12 @@ export function buildScrollMap() { state.scrollMap = []; }
 export function refreshState() {
     if (!state.easymde) return;
     const cm = state.easymde.codemirror;
+    enableLivePreview();
     if (legalNumberingActive) updateHeadingClasses(cm);
     updateActiveParagraph(cm);
 }
 
 export function initEditor(onChangeCallback) {
-    const livePreviewToolbarBtn = {
-        name: 'live-preview',
-        action: () => setLivePreview(!livePreviewActive),
-        className: 'fa fa-eye',
-        title: livePreviewActive ? 'Exit Live Preview' : 'Live Preview',
-    };
     const legalNumberingToolbarBtn = {
         name: 'legal-numbering',
         action: () => setLegalNumbering(!legalNumberingActive),
@@ -144,11 +225,16 @@ export function initEditor(onChangeCallback) {
         maxHeight: '100%',
         sideBySideFullscreen: false,
         syncSideBySide: false,
+        parsingConfig: { highlightFormatting: true },
+        shortcuts: {
+            togglePreview: null,
+            toggleSideBySide: null,
+            toggleFullScreen: null,
+        },
         toolbar: [
             'bold', 'italic', 'heading', '|',
             'quote', 'unordered-list', 'ordered-list', '|',
             'link', 'image', 'table', '|',
-            livePreviewToolbarBtn, '|',
             legalNumberingToolbarBtn, '|',
             'guide'
         ],
@@ -156,12 +242,12 @@ export function initEditor(onChangeCallback) {
     });
 
     const cm = state.easymde.codemirror;
+    enableLivePreview();
+    initLivePreviewLinks(cm);
 
     // Apply persisted state once the toolbar DOM exists
     setTimeout(() => {
-        livePreviewBtn = elements.editorPane.querySelector('.fa-eye')?.closest('button');
-        legalBtn       = elements.editorPane.querySelector('.fa-list-ol')?.closest('button');
-        if (livePreviewActive)    setLivePreview(true);
+        legalBtn = elements.editorPane.querySelector('button.legal-numbering');
         if (legalNumberingActive) setLegalNumbering(true);
     }, 0);
 

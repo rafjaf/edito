@@ -209,52 +209,47 @@ body.legal-numbering #outline-list li[data-level="5"] a::before { content: count
 body.legal-numbering #outline-list li[data-level="6"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) "." counter(ol-h6) ".\00a0"; }
 
 /* ── Live Preview mode (lp-mode) ─────────────────────────────────────── */
-/* The CodeMirror editor stays fully active. In lp-mode, markdown syntax
-   characters are made transparent (same color as background) so they are
-   invisible but retain their layout dimensions — CodeMirror's cursor
-   coordinate mapping stays correct. The active paragraph restores them. */
+/* CodeMirror remains the editing surface. Markdown syntax tokens are
+   invisible outside the active paragraph, while the document text keeps
+   CodeMirror's rendered Markdown styling. */
 
-/* Characters to hide: color = background of the CodeMirror editor */
-#editor-pane.lp-mode .cm-formatting-header,
-#editor-pane.lp-mode .cm-formatting-strong,
-#editor-pane.lp-mode .cm-formatting-em,
-#editor-pane.lp-mode .cm-formatting-code,
-#editor-pane.lp-mode .cm-formatting-list,
-#editor-pane.lp-mode .cm-formatting-link,
-#editor-pane.lp-mode .cm-formatting-link-string,
-#editor-pane.lp-mode .cm-url,
-#editor-pane.lp-mode .cm-formatting-task {
-    color: var(--secondary-bg) !important;
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-header,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-quote,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-strong,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-em,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-strikethrough,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-code,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-code-block,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-list,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-task,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-link,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-link-string,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-image,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-escape,
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-url {
+    display: none !important;
 }
 
-/* 2. Visual rendering: headings get bigger, bold/italic are already styled by CM */
-#editor-pane.lp-mode .cm-header-1:not(.cm-formatting) { font-size: 1.8em; font-weight: bold; line-height: 1.4; display: inline-block; }
-#editor-pane.lp-mode .cm-header-2:not(.cm-formatting) { font-size: 1.5em; font-weight: bold; line-height: 1.4; display: inline-block; }
-#editor-pane.lp-mode .cm-header-3:not(.cm-formatting) { font-size: 1.25em; font-weight: bold; display: inline-block; }
-#editor-pane.lp-mode .cm-header-4:not(.cm-formatting) { font-size: 1.1em; font-weight: bold; display: inline-block; }
-/* Link text gets link styling */
+/* Keep rendered Markdown semantics visible in the editable document. */
+#editor-pane.lp-mode .cm-header-1 { font-size: 1.8em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-2 { font-size: 1.5em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-3 { font-size: 1.25em; font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-header-4 { font-size: 1.1em; font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-header-5,
+#editor-pane.lp-mode .cm-header-6 { font-weight: bold; display: inline-block; }
 #editor-pane.lp-mode .cm-link:not(.cm-formatting) { color: var(--link-color); text-decoration: underline; }
+#editor-pane.lp-mode .cm-link:not(.cm-formatting):hover { cursor: pointer; }
+#editor-pane.lp-mode .cm-quote:not(.cm-formatting) { color: var(--muted-text); font-style: italic; }
 
-/* 3. Active paragraph: restore the characters to normal color */
-#editor-pane.lp-mode .lp-active-para .cm-formatting-header,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-strong,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-em,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-code,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-list,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-link,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-link-string,
-#editor-pane.lp-mode .lp-active-para .cm-url,
-#editor-pane.lp-mode .lp-active-para .cm-formatting-task {
-    color: inherit !important;
-}
-
-/* Also reset heading sizes in the active paragraph (edit at body size) */
-#editor-pane.lp-mode .lp-active-para .cm-header-1,
-#editor-pane.lp-mode .lp-active-para .cm-header-2,
-#editor-pane.lp-mode .lp-active-para .cm-header-3,
-#editor-pane.lp-mode .lp-active-para .cm-header-4 {
-    font-size: inherit !important;
-    font-weight: normal !important;
+/* Active paragraph: expose the source syntax without switching modes. */
+#editor-pane.lp-mode .lp-active-para .cm-formatting,
+#editor-pane.lp-mode .lp-active-para .cm-url {
     display: inline !important;
+    color: inherit !important;
+    text-decoration-color: currentColor !important;
 }
 
+#editor-pane.lp-mode .lp-active-para .cm-formatting-header {
+    display: inline-block !important;
+}
