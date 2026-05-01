@@ -1,6 +1,6 @@
 {
   "name": "edito",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "server.js",
   "scripts": {
     "test": "node --check server.js && node --check public/main.js && node --check public/modules/api.js && node --check public/modules/config.js && node --check public/modules/editor.js && node --check public/modules/elements.js && node --check public/modules/resize.js && node --check public/modules/state.js && node --check public/modules/ui.js"

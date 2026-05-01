@@ -20,6 +20,7 @@ let lastClickedHref      = null;
 let measurementRefreshFrame = null;
 let pendingMeasurementAnchor = null;
 let preserveRevealOnToolbarAction = false;
+let searchState = { query: '', matches: [], index: -1 };
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const LIST_LEVELS = ['lp-list-line-depth-0','lp-list-line-depth-1','lp-list-line-depth-2','lp-list-line-depth-3','lp-list-line-depth-4','lp-list-line-depth-5'];
@@ -476,6 +477,193 @@ function initToolbarEditingMode(cm) {
     });
 }
 
+// ── Full-document toolbar search ─────────────────────────────────────
+function buildSearchMatches(cm, query) {
+    if (!query) return [];
+    const haystack = cm.getValue('\n').toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    const matches = [];
+    let fromIndex = 0;
+    let matchIndex;
+
+    while ((matchIndex = haystack.indexOf(needle, fromIndex)) !== -1) {
+        matches.push({
+            from: cm.posFromIndex(matchIndex),
+            to: cm.posFromIndex(matchIndex + query.length),
+        });
+        fromIndex = matchIndex + Math.max(needle.length, 1);
+    }
+
+    return matches;
+}
+
+function updateSearchCount(countEl) {
+    if (!searchState.query) {
+        countEl.textContent = '';
+        return;
+    }
+    countEl.textContent = searchState.matches.length
+        ? `${searchState.index + 1}/${searchState.matches.length}`
+        : '0/0';
+}
+
+function focusSearchInput(input) {
+    input.focus();
+    input.select();
+}
+
+function centerMatchInViewport(cm, match) {
+    const scroller = cm.getScrollerElement();
+    const coords = cm.charCoords(match.from, 'local');
+    const lineHeight = cm.defaultTextHeight();
+    const targetTop = coords.top - (scroller.clientHeight / 2) + lineHeight;
+    cm.scrollTo(null, Math.max(0, targetTop));
+}
+
+function scheduleCenteredSearchMatch(cm, match) {
+    requestAnimationFrame(() => {
+        centerMatchInViewport(cm, match);
+        requestAnimationFrame(() => centerMatchInViewport(cm, match));
+    });
+}
+
+function selectSearchMatch(cm, countEl, nextIndex) {
+    if (!searchState.matches.length) {
+        searchState.index = -1;
+        updateSearchCount(countEl);
+        return;
+    }
+
+    searchState.index = (nextIndex + searchState.matches.length) % searchState.matches.length;
+    const match = searchState.matches[searchState.index];
+    revealActiveSource = true;
+    lastClickedHref = null;
+    cm.setSelection(match.from, match.to);
+    cm.focus();
+    updateActiveParagraph(cm);
+    scheduleCenteredSearchMatch(cm, match);
+    updateSearchCount(countEl);
+}
+
+function refreshSearch(cm, input, countEl, { keepIndex = false, activate = false } = {}) {
+    const previousIndex = searchState.index;
+    searchState.query = input.value;
+    searchState.matches = buildSearchMatches(cm, searchState.query);
+    searchState.index = -1;
+
+    if (!searchState.query || !searchState.matches.length) {
+        updateSearchCount(countEl);
+        return;
+    }
+
+    const nextIndex = keepIndex ? Math.max(previousIndex, 0) : 0;
+    if (!activate) {
+        searchState.index = Math.min(nextIndex, searchState.matches.length - 1);
+        updateSearchCount(countEl);
+        return;
+    }
+    selectSearchMatch(cm, countEl, nextIndex);
+}
+
+function clearSearch(input, countEl) {
+    input.value = '';
+    searchState = { query: '', matches: [], index: -1 };
+    updateSearchCount(countEl);
+    input.focus();
+}
+
+function createToolbarSearch(cm) {
+    const form = document.createElement('form');
+    form.className = 'toolbar-search';
+    form.role = 'search';
+
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-search';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = 'Search';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Search document');
+
+    const count = document.createElement('span');
+    count.className = 'toolbar-search-count';
+    count.setAttribute('aria-live', 'polite');
+
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'toolbar-search-clear';
+    clear.title = 'Clear search';
+    clear.setAttribute('aria-label', 'Clear search');
+    const clearIcon = document.createElement('i');
+    clearIcon.className = 'fas fa-times';
+    clearIcon.setAttribute('aria-hidden', 'true');
+    clear.appendChild(clearIcon);
+
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.title = 'Previous match';
+    previous.setAttribute('aria-label', 'Previous match');
+    const previousIcon = document.createElement('i');
+    previousIcon.className = 'fas fa-chevron-up';
+    previousIcon.setAttribute('aria-hidden', 'true');
+    previous.appendChild(previousIcon);
+
+    const next = document.createElement('button');
+    next.type = 'submit';
+    next.title = 'Next match';
+    next.setAttribute('aria-label', 'Next match');
+    const nextIcon = document.createElement('i');
+    nextIcon.className = 'fas fa-chevron-down';
+    nextIcon.setAttribute('aria-hidden', 'true');
+    next.appendChild(nextIcon);
+
+    form.append(icon, input, count, clear, previous, next);
+
+    input.addEventListener('input', () => refreshSearch(cm, input, count));
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count, { activate: true });
+        } else {
+            selectSearchMatch(cm, count, searchState.index + (event.shiftKey ? -1 : 1));
+        }
+    });
+    clear.addEventListener('click', () => clearSearch(input, count));
+    previous.addEventListener('click', () => {
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count);
+        }
+        selectSearchMatch(cm, count, searchState.index - 1);
+    });
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count);
+        }
+        selectSearchMatch(cm, count, searchState.index + 1);
+    });
+    cm.on('change', () => {
+        if (input.value) refreshSearch(cm, input, count, { keepIndex: true });
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key.toLowerCase() !== 'f' || !(event.metaKey || event.ctrlKey)) return;
+        event.preventDefault();
+        focusSearchInput(input);
+    });
+
+    return form;
+}
+
+function initToolbarSearch(cm) {
+    const toolbar = elements.editorPane.querySelector('.editor-toolbar');
+    if (!toolbar || toolbar.querySelector('.toolbar-search')) return;
+    toolbar.appendChild(createToolbarSearch(cm));
+}
+
 // ── Live preview ──────────────────────────────────────────────────────
 function enableLivePreview({ revealSource = false } = {}) {
     livePreviewActive = true;
@@ -575,6 +763,7 @@ export function initEditor(onChangeCallback) {
     setTimeout(() => {
         legalBtn = elements.editorPane.querySelector('button.legal-numbering');
         initToolbarEditingMode(cm);
+        initToolbarSearch(cm);
         if (legalNumberingActive) setLegalNumbering(true);
     }, 0);
 

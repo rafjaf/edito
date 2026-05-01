@@ -64,6 +64,52 @@ a { cursor: pointer; }
 #editor { display: none; }
 .EasyMDEContainer { display: flex; flex-direction: column; height: 100%; border: none !important; box-shadow: none !important; min-height: 0; }
 .editor-toolbar { flex-shrink: 0; border-bottom: var(--pane-border) !important; height: var(--toolbar-row-height); box-sizing: border-box; display: flex; align-items: center; }
+.toolbar-search {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: var(--secondary-bg);
+    color: var(--muted-text);
+    flex: 0 1 260px;
+    min-width: 150px;
+    max-width: 320px;
+}
+.toolbar-search input {
+    width: 100%;
+    min-width: 56px;
+    height: 24px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+}
+.toolbar-search-count {
+    min-width: 34px;
+    text-align: right;
+    color: var(--muted-text);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+.toolbar-search button {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--icon-color);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.toolbar-search button:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
 .CodeMirror-wrap { flex-grow: 1; min-height: 0; position: relative; }
 .CodeMirror { height: 100% !important; font-size: 16px; line-height: 1.6; }
 .editor-preview, .editor-preview-side {
