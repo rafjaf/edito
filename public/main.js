@@ -54,7 +54,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 await loadFileContent(firstFilePath);
             }
         } catch (error) {
-            elements.fileList.innerHTML = `<li>Error loading files.</li>`;
+            elements.fileList.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = 'Error loading files.';
+            elements.fileList.appendChild(li);
         }
     }
 
@@ -187,8 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mimeType = 'text/markdown;charset=utf-8';
             fileName = `${baseName}.md`;
         } else if (type === 'html') {
-            const renderedHtml = state.easymde.options.previewRender(content);
-            downloadContent = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>${baseName}</title></head>\n<body>\n${renderedHtml}\n</body>\n</html>`;
+            const renderedHtml = editor.sanitizeRenderedHtml(state.easymde.options.previewRender(content));
+            downloadContent = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>${escapeHtml(baseName)}</title></head>\n<body>\n${renderedHtml}\n</body>\n</html>`;
             mimeType = 'text/html;charset=utf-8';
             fileName = `${baseName}.html`;
         }
@@ -298,3 +301,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadFileList();
     ui.clearEditorUI();
 });
+
+function escapeHtml(value) {
+    const span = document.createElement('span');
+    span.textContent = value;
+    return span.innerHTML;
+}

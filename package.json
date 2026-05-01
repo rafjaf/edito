@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --check server.js && node --check public/main.js && node --check public/modules/api.js && node --check public/modules/config.js && node --check public/modules/editor.js && node --check public/modules/elements.js && node --check public/modules/resize.js && node --check public/modules/state.js && node --check public/modules/ui.js"
   },
   "keywords": [],
   "author": "Rafaël Jafferali",
@@ -12,7 +12,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-free": "^6.7.2",
     "chokidar": "^4.0.3",
-    "cors": "^2.8.6",
+    "dompurify": "^3.4.2",
     "easymde": "^2.20.0",
     "express": "^5.1.0",
     "socket.io": "^4.8.1"

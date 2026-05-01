@@ -19,7 +19,7 @@ export function updateFileList(files, onFolderClick, onFileClick) {
     if (state.currentFolder) {
         const parentPath = state.currentFolder.includes('/') ? state.currentFolder.substring(0, state.currentFolder.lastIndexOf('/')) : '';
         const li = document.createElement('li');
-        li.innerHTML = `<span class="icon"><i class="fas fa-arrow-up"></i></span> ..`;
+        li.append(createIcon('fa-arrow-up'), document.createTextNode(' ..'));
         li.dataset.path = parentPath;
         li.dataset.type = 'folder';
         li.addEventListener('click', () => onFolderClick(parentPath));
@@ -28,7 +28,7 @@ export function updateFileList(files, onFolderClick, onFileClick) {
     files.forEach(item => {
         const li = document.createElement('li');
         const iconClass = item.type === 'folder' ? 'fa-folder' : 'fa-file-alt';
-        li.innerHTML = `<span class="icon"><i class="fas ${iconClass}"></i></span> ${item.name}`;
+        li.append(createIcon(iconClass), document.createTextNode(` ${item.name}`));
         const itemPath = state.currentFolder ? `${state.currentFolder}/${item.name}` : item.name;
         li.dataset.path = itemPath;
         li.dataset.type = item.type;
@@ -62,9 +62,8 @@ export function generateOutline(content, onTocClick) {
         const plainTitle = strippedBold.replace(/\*(.+?)\*/g, '$1');
         const lineNumber = (content.slice(0, match.index).match(/\n/g) || []).length;
         const a = document.createElement('a');
-        // Build inner HTML: render *italic* as <em>
-        a.innerHTML = strippedBold.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        a.href = 'javascript:void(0)';
+        appendInlineItalic(a, strippedBold);
+        a.href = '#';
         a.className = `h${level}`;
         a.style.setProperty('--outline-number', JSON.stringify(`${counters.slice(0, level).join('.')}. `));
         a.dataset.line = lineNumber;
@@ -138,4 +137,33 @@ function formatBytes(bytes, decimals = 2) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function createIcon(iconClass) {
+    const span = document.createElement('span');
+    span.className = 'icon';
+    const icon = document.createElement('i');
+    icon.className = `fas ${iconClass}`;
+    span.appendChild(icon);
+    return span;
+}
+
+function appendInlineItalic(parent, text) {
+    const italicRx = /\*(.+?)\*/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = italicRx.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+        const em = document.createElement('em');
+        em.textContent = match[1];
+        parent.appendChild(em);
+        lastIndex = italicRx.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
 }

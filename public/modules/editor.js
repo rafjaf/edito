@@ -28,6 +28,27 @@ const EMPTY_HEADING_RX = /^\s{0,3}#{1,6}\s*$/;
 const LIST_MARKER_RX = /^(\t*)-\s+/;
 const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
 const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+const SANITIZE_CONFIG = {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['base', 'button', 'embed', 'form', 'iframe', 'input', 'link', 'meta', 'object', 'script', 'select', 'style', 'textarea'],
+    FORBID_ATTR: ['style', 'srcset']
+};
+
+export function sanitizeRenderedHtml(html) {
+    if (!window.DOMPurify?.sanitize) {
+        const fallback = document.createElement('template');
+        fallback.textContent = html;
+        return fallback.innerHTML;
+    }
+
+    const sanitized = window.DOMPurify.sanitize(html, SANITIZE_CONFIG);
+    const template = document.createElement('template');
+    template.innerHTML = sanitized;
+    template.content.querySelectorAll('a[target="_blank"]').forEach((link) => {
+        link.setAttribute('rel', 'noopener noreferrer');
+    });
+    return template.innerHTML;
+}
 
 function captureMeasurementAnchor(cm) {
     const cursor = cm.getCursor();
@@ -277,13 +298,14 @@ function getInlineLinkByText(cm, lineNo, text) {
 }
 
 function normalizeLinkTarget(rawHref) {
-    const href = rawHref.trim();
-    if (href.startsWith('#xml=')) return href.slice(5);
-    if (href.startsWith('xml=')) return href.slice(4);
+    let href = rawHref.trim();
+    if (href.startsWith('#xml=')) href = href.slice(5);
+    if (href.startsWith('xml=')) href = href.slice(4);
     try {
-        return new URL(href, window.location.href).href;
+        const url = new URL(href, window.location.href);
+        return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : '#';
     } catch {
-        return href;
+        return '#';
     }
 }
 
@@ -309,7 +331,7 @@ function initLivePreviewLinks(cm) {
         const shouldOpen = event.metaKey || event.ctrlKey || lastClickedHref === link.href;
         lastClickedHref = link.href;
         updateActiveParagraph(cm);
-        if (shouldOpen) {
+        if (shouldOpen && link.href !== '#') {
             event.preventDefault();
             event.stopPropagation();
             window.open(link.href, '_blank', 'noopener');
@@ -538,6 +560,9 @@ export function initEditor(onChangeCallback) {
             legalNumberingToolbarBtn, '|',
             'guide'
         ],
+        renderingConfig: {
+            sanitizerFunction: sanitizeRenderedHtml
+        },
         codemirror: { indentUnit: 4, indentWithTabs: true, tabSize: 4 }
     });
 

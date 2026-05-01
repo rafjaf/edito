@@ -104,7 +104,7 @@ a { cursor: pointer; }
 #outline-list a.h6 { padding-left: 65px; font-size: 0.8em; color: var(--muted-text); }
 
 /* Footer (Status Bar) */
-#footer { height: var(--footer-height); background-color: var(--secondary-bg); border-top: var(--pane-border); padding: 0 15px; display: flex; align-items: center; font-size: 0.85em; color: var(--muted-text); position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; gap: 10px; }
+#status-bar { height: var(--footer-height); background-color: var(--secondary-bg); border-top: var(--pane-border); padding: 0 15px; display: flex; align-items: center; font-size: 0.85em; color: var(--muted-text); position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; gap: 10px; }
 #status-sync { margin-left: auto; font-style: italic; font-weight: bold; padding: 1px 5px; border-radius: 3px; }
 .sync-saving { color: #b95000; background-color: #fff3e0; }
 .sync-saved { color: #155724; background-color: #d4edda; }

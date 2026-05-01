@@ -28,6 +28,8 @@ docker-compose up --build -d
 
 Open http://localhost:3000
 
+The bundled Compose file publishes Edito on `127.0.0.1:3000` by default. If you expose it to a network, put it behind an authenticated reverse proxy.
+
 ## Running with Node.js
 
 ```sh
@@ -36,6 +38,8 @@ node server.js
 ```
 
 Open http://localhost:3000
+
+By default the Node server binds to `127.0.0.1`. Set `HOST=0.0.0.0` only when a reverse proxy or container network needs it.
 
 ## Authentication
 
