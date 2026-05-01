@@ -11,6 +11,7 @@ let legalBtn             = null;
 // Store CodeMirror line *handles* so they survive edits/undos
 let activeParaHandles    = [];
 let listMarkerHandles    = [];
+let listLineHandles      = [];
 let headingNumberByLine  = new Map();
 let headingUpdateTimeout = null;
 let revealActiveSource   = false;
@@ -19,6 +20,7 @@ let measurementRefreshFrame = null;
 let preserveRevealOnToolbarAction = false;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
+const LIST_LEVELS = ['lp-list-line-depth-0','lp-list-line-depth-1','lp-list-line-depth-2','lp-list-line-depth-3','lp-list-line-depth-4','lp-list-line-depth-5'];
 const HEADING_RX = /^(#{1,6})\s/;
 const EMPTY_HEADING_RX = /^\s{0,3}#{1,6}\s*$/;
 const LIST_MARKER_RX = /^(\t*)-\s+/;
@@ -159,15 +161,26 @@ function applyHeadingNumbersToVisibleLines(cm) {
 function updateListMarkers(cm) {
     listMarkerHandles.forEach(marker => marker.clear());
     listMarkerHandles = [];
+    listLineHandles.forEach((handle) => {
+        cm.removeLineClass(handle, 'wrap', 'lp-list-line');
+        LIST_LEVELS.forEach(cls => cm.removeLineClass(handle, 'wrap', cls));
+    });
+    listLineHandles = [];
 
     cm.operation(() => {
         for (let lineNo = 0; lineNo < cm.lineCount(); lineNo++) {
             const line = cm.getLine(lineNo);
             const match = LIST_MARKER_RX.exec(line);
             if (!match) continue;
-            const from = { line: lineNo, ch: match[1].length };
+            const from = { line: lineNo, ch: 0 };
             const to = { line: lineNo, ch: match[0].length };
-            const depth = Math.min(match[1].length, 2);
+            const depth = Math.min(match[1].length, LIST_LEVELS.length - 1);
+            const handle = cm.getLineHandle(lineNo);
+            if (handle) {
+                cm.addLineClass(handle, 'wrap', 'lp-list-line');
+                cm.addLineClass(handle, 'wrap', `lp-list-line-depth-${depth}`);
+                listLineHandles.push(handle);
+            }
             listMarkerHandles.push(cm.markText(from, to, { className: `lp-list-marker lp-list-marker-depth-${depth}` }));
         }
     });

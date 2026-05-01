@@ -224,6 +224,50 @@ body.legal-numbering #outline-list li a::before { content: var(--outline-number)
     color: inherit !important;
 }
 
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-numbered,
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading {
+    padding-top: 0.65em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-1 {
+    padding-top: 0.85em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-numbered pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading pre.CodeMirror-line {
+    padding-top: 0.18em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) {
+    --lp-list-text-start: 2.2em;
+    --lp-marker-width: 1.1em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-1:not(.lp-active-para) {
+    --lp-list-text-start: 4.4em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-2:not(.lp-active-para) {
+    --lp-list-text-start: 6.7em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-3:not(.lp-active-para) {
+    --lp-list-text-start: 9em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-4:not(.lp-active-para) {
+    --lp-list-text-start: 11.3em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-5:not(.lp-active-para) {
+    --lp-list-text-start: 13.6em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) pre.CodeMirror-line-like {
+    padding-left: var(--lp-list-text-start);
+}
+
 #editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker {
     color: transparent !important;
     display: inline-block !important;
@@ -234,20 +278,49 @@ body.legal-numbering #outline-list li a::before { content: var(--outline-number)
 #editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker::after {
     color: var(--text-color);
     content: "\2022\00a0";
-    font-size: 23px;
+    display: inline-block;
+    font-size: 19px;
     font-weight: 700;
     line-height: 1;
-    vertical-align: -0.05em;
+    margin-left: calc(-1 * var(--lp-marker-width));
+    text-align: center;
+    vertical-align: 0.03em;
+    width: var(--lp-marker-width);
 }
 
 #editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-1::after {
-    content: "\25E6\00a0";
-    font-size: 22px;
+    border: 1px solid var(--text-color);
+    border-radius: 50%;
+    box-sizing: border-box;
+    content: "";
+    height: 0.3em;
+    margin-right: calc(var(--lp-marker-width) - 0.3em);
+    vertical-align: 0.02em;
+    width: 0.3em;
 }
 
 #editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-2::after {
     content: "\25AA\00a0";
-    font-size: 20px;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-3::after,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-5::after {
+    border: 1.5px solid var(--text-color);
+    border-radius: 50%;
+    box-sizing: border-box;
+    content: "";
+    height: 0.46em;
+    margin-right: calc(var(--lp-marker-width) - 0.46em);
+    vertical-align: 0.03em;
+    width: 0.46em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-4::after {
+    content: "\25AA\00a0";
+    font-size: 15px;
+    font-weight: 600;
 }
 
 /* Keep rendered Markdown semantics visible in the editable document. */
