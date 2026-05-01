@@ -15,12 +15,21 @@ let headingNumberByLine  = new Map();
 let headingUpdateTimeout = null;
 let revealActiveSource   = false;
 let lastClickedHref      = null;
+let measurementRefreshFrame = null;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const HEADING_RX = /^(#{1,6})\s/;
 const LIST_MARKER_RX = /^(\t*)-\s+/;
 const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
 const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+
+function scheduleMeasurementRefresh(cm) {
+    if (measurementRefreshFrame !== null) return;
+    measurementRefreshFrame = requestAnimationFrame(() => {
+        measurementRefreshFrame = null;
+        cm.refresh();
+    });
+}
 
 // ── Paragraph tracking ────────────────────────────────────────────────
 function findMarkdownBlockBounds(cm, lineNo) {
@@ -47,10 +56,15 @@ function findMarkdownBlockBounds(cm, lineNo) {
 
 function updateActiveParagraph(cm) {
     cm.operation(() => {
-        // Remove class from previously active lines (use handles — stale handles are ignored by CM)
-        activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
-        activeParaHandles = [];
-        if (!livePreviewActive || !revealActiveSource) return;
+        const previousHandles = activeParaHandles;
+        if (!livePreviewActive || !revealActiveSource) {
+            if (previousHandles.length) {
+                previousHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+                activeParaHandles = [];
+                scheduleMeasurementRefresh(cm);
+            }
+            return;
+        }
         const activeLineHandles = new Set();
         cm.listSelections().forEach((selection) => {
             const firstLine = selection.from().line;
@@ -66,10 +80,20 @@ function updateActiveParagraph(cm) {
                 }
             }
         });
-        activeLineHandles.forEach((handle) => {
+
+        const nextHandles = Array.from(activeLineHandles);
+        const unchanged = previousHandles.length === nextHandles.length
+            && previousHandles.every((handle, index) => handle === nextHandles[index]);
+        if (unchanged) return;
+
+        // Remove class from previously active lines (use handles — stale handles are ignored by CM)
+        previousHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+        activeParaHandles = [];
+        nextHandles.forEach((handle) => {
             cm.addLineClass(handle, 'wrap', 'lp-active-para');
             activeParaHandles.push(handle);
         });
+        scheduleMeasurementRefresh(cm);
     });
 }
 
