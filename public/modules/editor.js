@@ -14,9 +14,11 @@ let listMarkerHandles    = [];
 let listLineHandles      = [];
 let headingNumberByLine  = new Map();
 let headingUpdateTimeout = null;
+let headingViewportCheckTimeout = null;
 let revealActiveSource   = false;
 let lastClickedHref      = null;
 let measurementRefreshFrame = null;
+let pendingMeasurementAnchor = null;
 let preserveRevealOnToolbarAction = false;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
@@ -27,11 +29,39 @@ const LIST_MARKER_RX = /^(\t*)-\s+/;
 const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
 const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
 
-function scheduleMeasurementRefresh(cm) {
+function captureMeasurementAnchor(cm) {
+    const cursor = cm.getCursor();
+    const line = cm.getLine(cursor.line);
+    if (line == null) return null;
+    const pos = { line: cursor.line, ch: Math.min(cursor.ch, line.length) };
+    return {
+        pos,
+        top: cm.charCoords(pos, 'local').top,
+    };
+}
+
+function restoreMeasurementAnchor(cm, anchor) {
+    if (!anchor) return;
+    const line = cm.getLine(anchor.pos.line);
+    if (line == null) return;
+    const pos = { line: anchor.pos.line, ch: Math.min(anchor.pos.ch, line.length) };
+    const afterTop = cm.charCoords(pos, 'local').top;
+    const scroller = cm.getScrollerElement();
+    cm.scrollTo(null, Math.max(0, scroller.scrollTop + afterTop - anchor.top));
+}
+
+function scheduleMeasurementRefresh(cm, anchor = captureMeasurementAnchor(cm)) {
+    if (anchor) pendingMeasurementAnchor = anchor;
     if (measurementRefreshFrame !== null) return;
     measurementRefreshFrame = requestAnimationFrame(() => {
+        const refreshAnchor = pendingMeasurementAnchor;
+        pendingMeasurementAnchor = null;
         measurementRefreshFrame = null;
         cm.refresh();
+        requestAnimationFrame(() => {
+            restoreMeasurementAnchor(cm, refreshAnchor);
+            if (legalNumberingActive) applyHeadingNumbersToVisibleLines(cm);
+        });
     });
 }
 
@@ -61,11 +91,12 @@ function findMarkdownBlockBounds(cm, lineNo) {
 function updateActiveParagraph(cm) {
     cm.operation(() => {
         const previousHandles = activeParaHandles;
+        const measurementAnchor = captureMeasurementAnchor(cm);
         if (!livePreviewActive || !revealActiveSource) {
             if (previousHandles.length) {
                 previousHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
                 activeParaHandles = [];
-                scheduleMeasurementRefresh(cm);
+                scheduleMeasurementRefresh(cm, measurementAnchor);
             }
             return;
         }
@@ -97,7 +128,7 @@ function updateActiveParagraph(cm) {
             cm.addLineClass(handle, 'wrap', 'lp-active-para');
             activeParaHandles.push(handle);
         });
-        scheduleMeasurementRefresh(cm);
+        scheduleMeasurementRefresh(cm, measurementAnchor);
     });
 }
 
@@ -147,14 +178,42 @@ function applyHeadingNumberToLine(cm, lineOrNumber, element) {
 }
 
 function applyHeadingNumbersToVisibleLines(cm) {
-    const viewport = cm.getViewport();
-    for (let lineNo = viewport.from; lineNo < viewport.to; lineNo++) {
-        const lineInfo = cm.lineInfo(lineNo);
-        if (lineInfo?.handle) {
-            const lineNode = document.querySelector(`.CodeMirror-code > div:nth-child(${lineNo - viewport.from + 1}) pre`);
-            if (lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
-        }
+    const renderedLines = cm.display?.view;
+    if (renderedLines?.length) {
+        renderedLines.forEach((viewLine) => {
+            const lineNo = cm.getLineNumber(viewLine.line);
+            const lineNode = viewLine.node?.querySelector('pre.CodeMirror-line, pre.CodeMirror-line-like');
+            if (lineNo !== null && lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
+        });
+        return;
     }
+
+    const viewport = cm.getViewport();
+    const visibleNodes = cm.getWrapperElement().querySelectorAll('.CodeMirror-code > div pre.CodeMirror-line, .CodeMirror-code > div pre.CodeMirror-line-like');
+    for (let lineNo = viewport.from; lineNo < viewport.to; lineNo++) {
+        const lineNode = visibleNodes[lineNo - viewport.from];
+        if (lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
+    }
+}
+
+function scheduleVisibleHeadingNumberCheck(cm) {
+    if (!legalNumberingActive) return;
+    clearTimeout(headingViewportCheckTimeout);
+    headingViewportCheckTimeout = setTimeout(() => {
+        if (!legalNumberingActive) return;
+        requestAnimationFrame(() => {
+            applyHeadingNumbersToVisibleLines(cm);
+        });
+    }, 140);
+}
+
+function flushVisibleHeadingNumberCheck(cm) {
+    if (!legalNumberingActive) return;
+    clearTimeout(headingViewportCheckTimeout);
+    requestAnimationFrame(() => {
+        applyHeadingNumbersToVisibleLines(cm);
+        scheduleVisibleHeadingNumberCheck(cm);
+    });
 }
 
 // ── List markers ─────────────────────────────────────────────────────
@@ -507,8 +566,9 @@ export function initEditor(onChangeCallback) {
     });
     cm.on('renderLine', (_cm, line, element) => applyHeadingNumberToLine(cm, line, element));
     cm.on('viewportChange', () => {
-        if (legalNumberingActive) applyHeadingNumbersToVisibleLines(cm);
+        flushVisibleHeadingNumberCheck(cm);
     });
+    cm.on('scroll', () => scheduleVisibleHeadingNumberCheck(cm));
     cm.on('change', () => {
         scheduleHeadingUpdate(cm);
         updateListMarkers(cm);
