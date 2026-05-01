@@ -182,41 +182,29 @@ body.legal-numbering #editor-pane.lp-mode .lp-heading-numbered:not(.lp-active-pa
     content: var(--lp-heading-number);
 }
 
-/* Outline */
-body.legal-numbering #outline-list { counter-reset: ol-h1 ol-h2 ol-h3 ol-h4 ol-h5 ol-h6; }
-body.legal-numbering #outline-list li[data-level="1"] { counter-increment: ol-h1; counter-reset: ol-h2 ol-h3 ol-h4 ol-h5 ol-h6; }
-body.legal-numbering #outline-list li[data-level="2"] { counter-increment: ol-h2; counter-reset: ol-h3 ol-h4 ol-h5 ol-h6; }
-body.legal-numbering #outline-list li[data-level="3"] { counter-increment: ol-h3; counter-reset: ol-h4 ol-h5 ol-h6; }
-body.legal-numbering #outline-list li[data-level="4"] { counter-increment: ol-h4; counter-reset: ol-h5 ol-h6; }
-body.legal-numbering #outline-list li[data-level="5"] { counter-increment: ol-h5; counter-reset: ol-h6; }
-body.legal-numbering #outline-list li[data-level="6"] { counter-increment: ol-h6; }
-body.legal-numbering #outline-list li[data-level="1"] a::before { content: counter(ol-h1) ".\00a0"; }
-body.legal-numbering #outline-list li[data-level="2"] a::before { content: counter(ol-h1) "." counter(ol-h2) ".\00a0"; }
-body.legal-numbering #outline-list li[data-level="3"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) ".\00a0"; }
-body.legal-numbering #outline-list li[data-level="4"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) ".\00a0"; }
-body.legal-numbering #outline-list li[data-level="5"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) ".\00a0"; }
-body.legal-numbering #outline-list li[data-level="6"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) "." counter(ol-h6) ".\00a0"; }
+/* Outline numbering is precomputed with the same full-document pass as editor numbering. */
+body.legal-numbering #outline-list li a::before { content: var(--outline-number); }
 
 /* ── Live Preview mode (lp-mode) ─────────────────────────────────────── */
 /* CodeMirror remains the editing surface. Markdown syntax tokens are
    invisible outside the active paragraph, while the document text keeps
    CodeMirror's rendered Markdown styling. */
 
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-header,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-quote,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-strong,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-em,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-strikethrough,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-code,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-code-block,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-list,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-task,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-link,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-link-string,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-image,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-formatting-escape,
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .cm-url {
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-header,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-quote,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-strong,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-em,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-strikethrough,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-code,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-code-block,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-list,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-task,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-link,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-link-string,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-image,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-escape,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-url {
     display: none !important;
 }
 
@@ -225,24 +213,24 @@ body.legal-numbering #outline-list li[data-level="6"] a::before { content: count
     tab-size: 4;
 }
 
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker {
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker {
     color: transparent !important;
     display: inline-block !important;
     font-size: 0 !important;
     text-decoration: none !important;
 }
 
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker::after {
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker::after {
     color: var(--text-color);
     content: "\2022\00a0";
     font-size: 16px;
 }
 
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker-depth-1::after {
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-1::after {
     content: "\25E6\00a0";
 }
 
-#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker-depth-2::after {
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-2::after {
     content: "\25AA\00a0";
 }
 

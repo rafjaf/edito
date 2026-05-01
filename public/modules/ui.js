@@ -49,9 +49,12 @@ export function updateFileList(files, onFolderClick, onFileClick) {
 export function generateOutline(content, onTocClick) {
     elements.outlineList.innerHTML = '';
     const headingRx = /^(#{1,6})\s+(.*)$/gm;
+    const counters = [0, 0, 0, 0, 0, 0];
     let match;
     while ((match = headingRx.exec(content)) !== null) {
         const level = match[1].length;
+        counters[level - 1]++;
+        for (let i = level; i < counters.length; i++) counters[i] = 0;
         const rawTitle = match[2].trim();
         // Strip bold markers (**...**  or __...__), keep the inner text
         const strippedBold = rawTitle.replace(/(\*\*|__)(.+?)\1/g, '$2');
@@ -63,6 +66,7 @@ export function generateOutline(content, onTocClick) {
         a.innerHTML = strippedBold.replace(/\*(.+?)\*/g, '<em>$1</em>');
         a.href = 'javascript:void(0)';
         a.className = `h${level}`;
+        a.style.setProperty('--outline-number', JSON.stringify(`${counters.slice(0, level).join('.')}. `));
         a.dataset.line = lineNumber;
         a.dataset.lvl = level;
         a.dataset.txt = plainTitle;
