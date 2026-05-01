@@ -5,6 +5,8 @@ import { elements } from './modules/elements.js';
 import * as ui from './modules/ui.js';
 import * as editor from './modules/editor.js';
 import * as api from './modules/api.js';
+import { initResizablePanes } from './modules/resize.js';
+import { refreshState } from './modules/editor.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -20,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBarUpdateTimeout = setTimeout(() => ui.updateStatusBar(content), STATUS_UPDATE_DEBOUNCE);
         outlineUpdateTimeout = setTimeout(() => {
             ui.generateOutline(content, editor.handleTocClick);
-            editor.buildScrollMap(content);
         }, STATUS_UPDATE_DEBOUNCE);
         debouncedSave();
     };
@@ -32,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.easymde.value('');
         state.easymde.codemirror.clearHistory();
         ui.clearEditorUI();
-        editor.buildScrollMap('');
+        refreshState();
     }
 
     async function loadFileList(folderPath = '') {
@@ -53,17 +54,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 await loadFileContent(firstFilePath);
             }
         } catch (error) {
-            elements.fileList.innerHTML = `<li>Error loading files.</li>`;
+            elements.fileList.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = 'Error loading files.';
+            elements.fileList.appendChild(li);
         }
     }
 
-    async function loadFileContent(filePath, isExternalReload = false) {
+    async function loadFileContent(filePath, isExternalReload = false, preloadedContent = null) {
         ui.setSyncStatus('loading');
         try {
-            const content = await api.fetchFileContent(filePath);
+            const content = preloadedContent ?? await api.fetchFileContent(filePath);
             if (isExternalReload && content === state.currentContent) {
                 ui.setSyncStatus('');
-                return;
+                return false;
             }
             clearEditorState(); // Clear previous state before loading new
             state.easymde.value(content);
@@ -76,8 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.headerCurrentFile.textContent = filePath;
             ui.updateStatusBar(content);
             ui.generateOutline(content, editor.handleTocClick);
-            editor.buildScrollMap(content);
             ui.updateActionButtons();
+            refreshState();
             
             // Highlight the active file in the list
             document.querySelectorAll('#file-list li.active').forEach(li => li.classList.remove('active'));
@@ -86,9 +90,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ui.setSyncStatus('');
             state.easymde.codemirror.focus();
+            return true;
         } catch (error) {
             clearEditorState();
             ui.setSyncStatus('');
+            return false;
         }
     }
 
@@ -106,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ui.setSyncStatus('saved', 'No changes');
                 return;
             }
+            ui.setSyncStatus('saving');
             await api.saveFile(state.currentFilePath, content);
         }, SAVE_DEBOUNCE);
     }
@@ -184,8 +191,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mimeType = 'text/markdown;charset=utf-8';
             fileName = `${baseName}.md`;
         } else if (type === 'html') {
-            const renderedHtml = state.easymde.options.previewRender(content);
-            downloadContent = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>${baseName}</title></head>\n<body>\n${renderedHtml}\n</body>\n</html>`;
+            const renderedHtml = editor.sanitizeRenderedHtml(state.easymde.options.previewRender(content));
+            downloadContent = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>${escapeHtml(baseName)}</title></head>\n<body>\n${renderedHtml}\n</body>\n</html>`;
             mimeType = 'text/html;charset=utf-8';
             fileName = `${baseName}.html`;
         }
@@ -222,8 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
     socket.on('connect', () => ui.showNotification('Connected', 'success', 1500));
     socket.on('disconnect', () => ui.showNotification('Disconnected', 'error'));
-    socket.on('file-changed', (data) => {
-        if (state.ignoreNextWatcherEvent) { return; }
+    socket.on('file-changed', async (data) => {
+        if (state.ignoreNextWatcherEvent) { state.ignoreNextWatcherEvent = false; return; }
         const changeParentDir = data.path.includes('/') ? data.path.substring(0, data.path.lastIndexOf('/')) : '';
         const changeName = data.path.substring(data.path.lastIndexOf('/') + 1);
         if (changeParentDir === state.currentFolder) {
@@ -231,8 +238,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 ui.showNotification(`File list updated: ${changeName} ${data.event}`, 'info', 2000);
                 loadFileList(state.currentFolder);
             } else if (data.event === 'change' && data.path === state.currentFilePath) {
-                ui.showNotification(`"${changeName}" changed externally. Reloading...`, 'warning', 3000);
-                loadFileContent(state.currentFilePath, true);
+                const reloaded = await loadFileContent(state.currentFilePath, true);
+                if (reloaded) {
+                    ui.showNotification(`"${changeName}" changed externally. Reloaded.`, 'warning', 3000);
+                }
             } else if (data.event === 'unlink' && data.path === state.currentFilePath) {
                 ui.showNotification(`"${changeName}" deleted externally. Clearing editor.`, 'warning', 3000);
                 clearEditorState();
@@ -274,14 +283,28 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     elements.aboutButton.addEventListener('click', (e) => {
         e.preventDefault();
-        alert('Edito v1.0\nA simple self-hosted Markdown editor powered by EasyMDE.');
+        document.getElementById('about-modal').classList.remove('hidden');
         elements.actionMenuDropdown.classList.add('hidden');
+    });
+    document.getElementById('about-modal-close').addEventListener('click', () => {
+        document.getElementById('about-modal').classList.add('hidden');
+    });
+    document.getElementById('about-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
     });
 
 
     // --- Initial Load ---
     editor.initEditor(onEditorChange);
+    window._editorInstance = state.easymde;
     ui.setToolbarHeightVar();
+    initResizablePanes();
     loadFileList();
     ui.clearEditorUI();
 });
+
+function escapeHtml(value) {
+    const span = document.createElement('span');
+    span.textContent = value;
+    return span.innerHTML;
+}

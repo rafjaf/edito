@@ -3,71 +3,729 @@ import { state } from './state.js';
 import { elements } from './elements.js';
 import { TOC_CLICK_OFFSET } from './config.js';
 
-let scrollSyncTimeout = null;
+const LS_LEGAL_NUMBERING = 'edito-legal-numbering';
 
-function buildScrollMap(content) {
-    requestAnimationFrame(() => {
-        if (!state.easymde.isPreviewActive()) {
-            state.scrollMap = [];
-            return;
-        }
-        const preview = elements.editorPane.querySelector('.editor-preview-side, .editor-preview');
-        if (!preview) {
-            state.scrollMap = [];
-            return;
-        }
-        const sourceHeadings = [];
-        const headingRx = /^(#{1,6})\s+(.*)$/gm;
-        let match;
-        while ((match = headingRx.exec(content)) !== null) {
-            sourceHeadings.push({ line: (content.slice(0, match.index).match(/\n/g) || []).length });
-        }
-        const headingsInPreview = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        const newLinkedMap = [];
-        const limit = Math.min(sourceHeadings.length, headingsInPreview.length);
-        for (let i = 0; i < limit; i++) {
-            newLinkedMap.push({ line: sourceHeadings[i].line, offset: headingsInPreview[i].offsetTop });
-        }
-        state.scrollMap = newLinkedMap;
+let livePreviewActive    = true;
+let legalNumberingActive = localStorage.getItem(LS_LEGAL_NUMBERING) === 'true';
+let legalBtn             = null;
+// Store CodeMirror line *handles* so they survive edits/undos
+let activeParaHandles    = [];
+let listMarkerHandles    = [];
+let listLineHandles      = [];
+let headingNumberByLine  = new Map();
+let headingUpdateTimeout = null;
+let headingViewportCheckTimeout = null;
+let revealActiveSource   = false;
+let lastClickedHref      = null;
+let measurementRefreshFrame = null;
+let pendingMeasurementAnchor = null;
+let preserveRevealOnToolbarAction = false;
+let searchState = { query: '', matches: [], index: -1 };
+
+const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
+const LIST_LEVELS = ['lp-list-line-depth-0','lp-list-line-depth-1','lp-list-line-depth-2','lp-list-line-depth-3','lp-list-line-depth-4','lp-list-line-depth-5'];
+const HEADING_RX = /^(#{1,6})\s/;
+const EMPTY_HEADING_RX = /^\s{0,3}#{1,6}\s*$/;
+const LIST_MARKER_RX = /^(\t*)-\s+/;
+const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
+const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
+const SANITIZE_CONFIG = {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['base', 'button', 'embed', 'form', 'iframe', 'input', 'link', 'meta', 'object', 'script', 'select', 'style', 'textarea'],
+    FORBID_ATTR: ['style', 'srcset']
+};
+
+export function sanitizeRenderedHtml(html) {
+    if (!window.DOMPurify?.sanitize) {
+        const fallback = document.createElement('template');
+        fallback.textContent = html;
+        return fallback.innerHTML;
+    }
+
+    const sanitized = window.DOMPurify.sanitize(html, SANITIZE_CONFIG);
+    const template = document.createElement('template');
+    template.innerHTML = sanitized;
+    template.content.querySelectorAll('a[target="_blank"]').forEach((link) => {
+        link.setAttribute('rel', 'noopener noreferrer');
+    });
+    return template.innerHTML;
+}
+
+function captureMeasurementAnchor(cm) {
+    const cursor = cm.getCursor();
+    const line = cm.getLine(cursor.line);
+    if (line == null) return null;
+    const pos = { line: cursor.line, ch: Math.min(cursor.ch, line.length) };
+    return {
+        pos,
+        top: cm.charCoords(pos, 'local').top,
+    };
+}
+
+function restoreMeasurementAnchor(cm, anchor) {
+    if (!anchor) return;
+    const line = cm.getLine(anchor.pos.line);
+    if (line == null) return;
+    const pos = { line: anchor.pos.line, ch: Math.min(anchor.pos.ch, line.length) };
+    const afterTop = cm.charCoords(pos, 'local').top;
+    const scroller = cm.getScrollerElement();
+    cm.scrollTo(null, Math.max(0, scroller.scrollTop + afterTop - anchor.top));
+}
+
+function scheduleMeasurementRefresh(cm, anchor = captureMeasurementAnchor(cm)) {
+    if (anchor) pendingMeasurementAnchor = anchor;
+    if (measurementRefreshFrame !== null) return;
+    measurementRefreshFrame = requestAnimationFrame(() => {
+        const refreshAnchor = pendingMeasurementAnchor;
+        pendingMeasurementAnchor = null;
+        measurementRefreshFrame = null;
+        cm.refresh();
+        requestAnimationFrame(() => {
+            restoreMeasurementAnchor(cm, refreshAnchor);
+            if (legalNumberingActive) applyHeadingNumbersToVisibleLines(cm);
+        });
     });
 }
 
-function syncPreviewScroll() {
-    if (!state.easymde.isSideBySideActive() || state.scrollMap.length < 1) return;
-    const cm = state.easymde.codemirror;
-    const preview = elements.editorPane.querySelector('.editor-preview-side');
-    if (!preview) return;
+// ── Paragraph tracking ────────────────────────────────────────────────
+function findMarkdownBlockBounds(cm, lineNo) {
+    const last = cm.lastLine();
+    const line = cm.getLine(lineNo);
 
-    const scrollInfo = cm.getScrollInfo();
-    const editorTopLine = cm.lineAtHeight(scrollInfo.top, 'local');
-    let currentEntry = null, nextEntry = null;
-    for (const entry of state.scrollMap) {
-        if (entry.line > editorTopLine) { nextEntry = entry; break; }
-        currentEntry = entry;
+    if (!line || line.trim() === '' || BLOCK_BOUNDARY_RX.test(line)) {
+        return { start: lineNo, end: lineNo };
     }
-    if (!currentEntry) { preview.scrollTop = 0; return; }
 
-    let targetScrollTop = currentEntry.offset;
-    if (nextEntry) {
-        const linesBetween = nextEntry.line - currentEntry.line;
-        const linesScrolled = editorTopLine - currentEntry.line;
-        const scrollPercentage = linesBetween > 0 ? (linesScrolled / linesBetween) : 0;
-        const pixelsBetween = nextEntry.offset - currentEntry.offset;
-        targetScrollTop += (pixelsBetween * scrollPercentage);
+    let start = lineNo, end = lineNo;
+    while (start > 0) {
+        const previous = cm.getLine(start - 1);
+        if (!previous || previous.trim() === '' || BLOCK_BOUNDARY_RX.test(previous)) break;
+        start--;
     }
-    preview.scrollTop = targetScrollTop;
+    while (end < last) {
+        const next = cm.getLine(end + 1);
+        if (!next || next.trim() === '' || BLOCK_BOUNDARY_RX.test(next)) break;
+        end++;
+    }
+    return { start, end };
 }
 
-function blockBuiltInSideBySideSync() {
-    const scroller = state.easymde.codemirror.getScrollerElement();
-    if (scroller.__syncBlocked) return;
-    const stop = e => e.stopImmediatePropagation();
-    scroller.addEventListener('scroll', stop, true);
-    elements.editorPane.addEventListener('scroll', stop, true);
-    scroller.__syncBlocked = true;
+function updateActiveParagraph(cm) {
+    cm.operation(() => {
+        const previousHandles = activeParaHandles;
+        const measurementAnchor = captureMeasurementAnchor(cm);
+        if (!livePreviewActive || !revealActiveSource) {
+            if (previousHandles.length) {
+                previousHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+                activeParaHandles = [];
+                scheduleMeasurementRefresh(cm, measurementAnchor);
+            }
+            return;
+        }
+        const activeLineHandles = new Set();
+        cm.listSelections().forEach((selection) => {
+            const firstLine = selection.from().line;
+            const lastLine = selection.to().line;
+            const seenLines = new Set();
+            for (let selectedLine = firstLine; selectedLine <= lastLine; selectedLine++) {
+                if (seenLines.has(selectedLine)) continue;
+                const { start, end } = findMarkdownBlockBounds(cm, selectedLine);
+                for (let l = start; l <= end; l++) {
+                    seenLines.add(l);
+                    const handle = cm.getLineHandle(l);
+                    if (handle) activeLineHandles.add(handle);
+                }
+            }
+        });
+
+        const nextHandles = Array.from(activeLineHandles);
+        const unchanged = previousHandles.length === nextHandles.length
+            && previousHandles.every((handle, index) => handle === nextHandles[index]);
+        if (unchanged) return;
+
+        // Remove class from previously active lines (use handles — stale handles are ignored by CM)
+        previousHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+        activeParaHandles = [];
+        nextHandles.forEach((handle) => {
+            cm.addLineClass(handle, 'wrap', 'lp-active-para');
+            activeParaHandles.push(handle);
+        });
+        scheduleMeasurementRefresh(cm, measurementAnchor);
+    });
+}
+
+// ── Heading line classes (drive CSS counters for legal numbering) ─────
+function updateHeadingClasses(cm) {
+    cm.operation(() => {
+        const n = cm.lineCount();
+        const counters = [0, 0, 0, 0, 0, 0];
+        headingNumberByLine = new Map();
+        for (let i = 0; i < n; i++) {
+            const h = cm.getLineHandle(i);
+            if (!h) continue;
+            HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+            cm.removeLineClass(h, 'wrap', 'lp-empty-heading');
+            const line = cm.getLine(i);
+            const m = HEADING_RX.exec(line);
+            if (m) {
+                const level = m[1].length;
+                counters[level - 1]++;
+                for (let j = level; j < counters.length; j++) counters[j] = 0;
+                headingNumberByLine.set(i, `${counters.slice(0, level).join('.')}. `);
+                cm.addLineClass(h, 'wrap', `lp-heading-${level}`);
+                cm.addLineClass(h, 'wrap', 'lp-heading-numbered');
+                if (line.slice(m[0].length).trim() === '') cm.addLineClass(h, 'wrap', 'lp-empty-heading');
+            } else {
+                cm.removeLineClass(h, 'wrap', 'lp-heading-numbered');
+                if (EMPTY_HEADING_RX.test(line)) cm.addLineClass(h, 'wrap', 'lp-empty-heading');
+            }
+        }
+        applyHeadingNumbersToVisibleLines(cm);
+    });
+}
+
+function scheduleHeadingUpdate(cm) {
+    clearTimeout(headingUpdateTimeout);
+    headingUpdateTimeout = setTimeout(() => updateHeadingClasses(cm), 300);
+}
+
+function applyHeadingNumberToLine(cm, lineOrNumber, element) {
+    const lineNo = typeof lineOrNumber === 'number' ? lineOrNumber : cm.getLineNumber(lineOrNumber);
+    const number = headingNumberByLine.get(lineNo);
+    if (!number) {
+        element.style.removeProperty('--lp-heading-number');
+        return;
+    }
+    element.style.setProperty('--lp-heading-number', JSON.stringify(number));
+}
+
+function applyHeadingNumbersToVisibleLines(cm) {
+    const renderedLines = cm.display?.view;
+    if (renderedLines?.length) {
+        renderedLines.forEach((viewLine) => {
+            const lineNo = cm.getLineNumber(viewLine.line);
+            const lineNode = viewLine.node?.querySelector('pre.CodeMirror-line, pre.CodeMirror-line-like');
+            if (lineNo !== null && lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
+        });
+        return;
+    }
+
+    const viewport = cm.getViewport();
+    const visibleNodes = cm.getWrapperElement().querySelectorAll('.CodeMirror-code > div pre.CodeMirror-line, .CodeMirror-code > div pre.CodeMirror-line-like');
+    for (let lineNo = viewport.from; lineNo < viewport.to; lineNo++) {
+        const lineNode = visibleNodes[lineNo - viewport.from];
+        if (lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
+    }
+}
+
+function scheduleVisibleHeadingNumberCheck(cm) {
+    if (!legalNumberingActive) return;
+    clearTimeout(headingViewportCheckTimeout);
+    headingViewportCheckTimeout = setTimeout(() => {
+        if (!legalNumberingActive) return;
+        requestAnimationFrame(() => {
+            applyHeadingNumbersToVisibleLines(cm);
+        });
+    }, 140);
+}
+
+function flushVisibleHeadingNumberCheck(cm) {
+    if (!legalNumberingActive) return;
+    clearTimeout(headingViewportCheckTimeout);
+    requestAnimationFrame(() => {
+        applyHeadingNumbersToVisibleLines(cm);
+        scheduleVisibleHeadingNumberCheck(cm);
+    });
+}
+
+// ── List markers ─────────────────────────────────────────────────────
+function updateListMarkers(cm) {
+    listMarkerHandles.forEach(marker => marker.clear());
+    listMarkerHandles = [];
+    listLineHandles.forEach((handle) => {
+        cm.removeLineClass(handle, 'wrap', 'lp-list-line');
+        LIST_LEVELS.forEach(cls => cm.removeLineClass(handle, 'wrap', cls));
+    });
+    listLineHandles = [];
+
+    cm.operation(() => {
+        for (let lineNo = 0; lineNo < cm.lineCount(); lineNo++) {
+            const line = cm.getLine(lineNo);
+            const match = LIST_MARKER_RX.exec(line);
+            if (!match) continue;
+            const from = { line: lineNo, ch: 0 };
+            const to = { line: lineNo, ch: match[0].length };
+            const depth = Math.min(match[1].length, LIST_LEVELS.length - 1);
+            const handle = cm.getLineHandle(lineNo);
+            if (handle) {
+                cm.addLineClass(handle, 'wrap', 'lp-list-line');
+                cm.addLineClass(handle, 'wrap', `lp-list-line-depth-${depth}`);
+                listLineHandles.push(handle);
+            }
+            listMarkerHandles.push(cm.markText(from, to, { className: `lp-list-marker lp-list-marker-depth-${depth}` }));
+        }
+    });
+}
+
+// ── Live preview links ────────────────────────────────────────────────
+function getInlineLinkAt(cm, pos) {
+    const line = cm.getLine(pos.line);
+    if (!line) return null;
+
+    INLINE_LINK_RX.lastIndex = 0;
+    let match;
+    while ((match = INLINE_LINK_RX.exec(line))) {
+        const markerOffset = match[0].startsWith('!') ? 1 : 0;
+        const textStart = match.index + markerOffset + 1;
+        const textEnd = textStart + match[1].length;
+        if (pos.ch >= textStart && pos.ch <= textEnd) {
+            return { text: match[1], href: normalizeLinkTarget(match[2]) };
+        }
+    }
+    return null;
+}
+
+function getInlineLinkByText(cm, lineNo, text) {
+    const line = cm.getLine(lineNo);
+    if (!line || !text) return null;
+
+    INLINE_LINK_RX.lastIndex = 0;
+    const matches = [];
+    let match;
+    while ((match = INLINE_LINK_RX.exec(line))) {
+        if (match[1] === text) matches.push({ text: match[1], href: normalizeLinkTarget(match[2]) });
+    }
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function normalizeLinkTarget(rawHref) {
+    let href = rawHref.trim();
+    if (href.startsWith('#xml=')) href = href.slice(5);
+    if (href.startsWith('xml=')) href = href.slice(4);
+    try {
+        const url = new URL(href, window.location.href);
+        return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : '#';
+    } catch {
+        return '#';
+    }
+}
+
+function getMouseLink(cm, event) {
+    if (!(event.target instanceof Element)) return null;
+    const target = event.target.closest('.cm-link:not(.cm-formatting)');
+    if (!target) return null;
+    const pos = cm.coordsChar({ left: event.clientX, top: event.clientY }, 'client');
+    return getInlineLinkAt(cm, pos) || getInlineLinkByText(cm, pos.line, target.textContent);
+}
+
+function initLivePreviewLinks(cm) {
+    cm.on('mousedown', (_cm, event) => {
+        if (event.button !== 0) return;
+        revealActiveSource = true;
+        const link = getMouseLink(cm, event);
+        if (!link) {
+            lastClickedHref = null;
+            updateActiveParagraph(cm);
+            return;
+        }
+
+        const shouldOpen = event.metaKey || event.ctrlKey || lastClickedHref === link.href;
+        lastClickedHref = link.href;
+        updateActiveParagraph(cm);
+        if (shouldOpen && link.href !== '#') {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(link.href, '_blank', 'noopener');
+        }
+    });
+}
+
+function toggleUnorderedList(editor) {
+    const cm = editor.codemirror || editor;
+    const ranges = cm.listSelections().map((selection) => {
+        const from = selection.from();
+        const to = selection.to();
+        const endLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+        return { start: from.line, end: endLine };
+    });
+
+    cm.operation(() => {
+        ranges.forEach(({ start, end }) => {
+            const lines = [];
+            for (let lineNo = start; lineNo <= end; lineNo++) {
+                const text = cm.getLine(lineNo);
+                if (text.trim()) lines.push({ lineNo, text });
+            }
+            if (!lines.length) lines.push({ lineNo: start, text: cm.getLine(start) || '' });
+
+            const removeBullets = lines.every(({ text }) => /^[\t ]*[-*+]\s+/.test(text));
+            lines.forEach(({ lineNo, text }) => {
+                if (removeBullets) {
+                    const marker = /^[\t ]*[-*+]\s+/.exec(text);
+                    const indentLength = /^[\t ]*/.exec(text)[0].length;
+                    cm.replaceRange('', { line: lineNo, ch: indentLength }, { line: lineNo, ch: marker[0].length });
+                    return;
+                }
+                if (/^[\t ]*[-*+]\s+/.test(text)) return;
+                const indentLength = /^[\t ]*/.exec(text)[0].length;
+                cm.replaceRange('- ', { line: lineNo, ch: indentLength });
+            });
+        });
+    });
+
+    revealActiveSource = true;
+    updateActiveParagraph(cm);
+    updateListMarkers(cm);
+    cm.focus();
+}
+
+function markdownEscapeLinkText(text) {
+    return text.replace(/\]/g, '\\]');
+}
+
+function normalizeMarkdownBlock(text) {
+    return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function htmlToMarkdown(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const renderChildren = (node, context = {}) => Array.from(node.childNodes)
+        .map(child => renderNode(child, context))
+        .join('');
+
+    const renderList = (node, ordered, depth) => {
+        let index = 1;
+        const lines = Array.from(node.children)
+            .filter(child => child.tagName?.toLowerCase() === 'li')
+            .map((li) => {
+                const nested = [];
+                const content = Array.from(li.childNodes).map((child) => {
+                    const tag = child.tagName?.toLowerCase();
+                    if (tag === 'ul' || tag === 'ol') {
+                        nested.push(renderList(child, tag === 'ol', depth + 1).trimEnd());
+                        return '';
+                    }
+                    return renderNode(child, { inList: true });
+                }).join('').trim();
+                const marker = ordered ? `${index++}. ` : '- ';
+                const current = `${'\t'.repeat(depth)}${marker}${content}`;
+                return nested.length ? `${current}\n${nested.join('\n')}` : current;
+            });
+        return `${lines.join('\n')}\n\n`;
+    };
+
+    const renderNode = (node, context = {}) => {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\s+/g, ' ');
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'br') return '\n';
+        if (tag === 'a') {
+            const href = node.getAttribute('href');
+            const text = renderChildren(node, context).trim() || href || '';
+            return href ? `[${markdownEscapeLinkText(text)}](${href})` : text;
+        }
+        if (tag === 'strong' || tag === 'b') return `**${renderChildren(node, context).trim()}**`;
+        if (tag === 'em' || tag === 'i') return `*${renderChildren(node, context).trim()}*`;
+        if (tag === 'code') return `\`${renderChildren(node, context).trim()}\``;
+        if (tag === 'pre') return `\n\`\`\`\n${node.textContent.trim()}\n\`\`\`\n\n`;
+        if (/^h[1-6]$/.test(tag)) return `${'#'.repeat(Number(tag[1]))} ${renderChildren(node, context).trim()}\n\n`;
+        if (tag === 'ul' || tag === 'ol') return renderList(node, tag === 'ol', context.listDepth || 0);
+        if (tag === 'p') return `${renderChildren(node, context).trim()}\n\n`;
+        if (tag === 'div' || tag === 'section' || tag === 'article') {
+            const rendered = renderChildren(node, context).trim();
+            return rendered ? `${rendered}\n\n` : '';
+        }
+        return renderChildren(node, context);
+    };
+
+    return normalizeMarkdownBlock(renderChildren(doc.body).trim());
+}
+
+function initHtmlPaste(cm) {
+    cm.on('paste', (_cm, event) => {
+        const html = event.clipboardData?.getData('text/html');
+        if (!html) return;
+        const markdown = htmlToMarkdown(html);
+        if (!markdown) return;
+        event.preventDefault();
+        revealActiveSource = true;
+        cm.replaceSelection(markdown, 'around');
+        updateActiveParagraph(cm);
+    });
+}
+
+function initToolbarEditingMode(cm) {
+    const toolbar = elements.editorPane.querySelector('.editor-toolbar');
+    if (!toolbar) return;
+
+    toolbar.addEventListener('mousedown', () => {
+        preserveRevealOnToolbarAction = true;
+        revealActiveSource = true;
+        updateActiveParagraph(cm);
+    });
+
+    toolbar.addEventListener('click', () => {
+        setTimeout(() => {
+            preserveRevealOnToolbarAction = false;
+            revealActiveSource = true;
+            updateHeadingClasses(cm);
+            updateActiveParagraph(cm);
+            scheduleMeasurementRefresh(cm);
+        }, 0);
+    });
+}
+
+// ── Full-document toolbar search ─────────────────────────────────────
+function buildSearchMatches(cm, query) {
+    if (!query) return [];
+    const haystack = cm.getValue('\n').toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    const matches = [];
+    let fromIndex = 0;
+    let matchIndex;
+
+    while ((matchIndex = haystack.indexOf(needle, fromIndex)) !== -1) {
+        matches.push({
+            from: cm.posFromIndex(matchIndex),
+            to: cm.posFromIndex(matchIndex + query.length),
+        });
+        fromIndex = matchIndex + Math.max(needle.length, 1);
+    }
+
+    return matches;
+}
+
+function updateSearchCount(countEl) {
+    if (!searchState.query) {
+        countEl.textContent = '';
+        return;
+    }
+    countEl.textContent = searchState.matches.length
+        ? `${searchState.index + 1}/${searchState.matches.length}`
+        : '0/0';
+}
+
+function focusSearchInput(input) {
+    input.focus();
+    input.select();
+}
+
+function centerMatchInViewport(cm, match) {
+    const scroller = cm.getScrollerElement();
+    const coords = cm.charCoords(match.from, 'local');
+    const lineHeight = cm.defaultTextHeight();
+    const targetTop = coords.top - (scroller.clientHeight / 2) + lineHeight;
+    cm.scrollTo(null, Math.max(0, targetTop));
+}
+
+function scheduleCenteredSearchMatch(cm, match) {
+    requestAnimationFrame(() => {
+        centerMatchInViewport(cm, match);
+        requestAnimationFrame(() => centerMatchInViewport(cm, match));
+    });
+}
+
+function selectSearchMatch(cm, countEl, nextIndex) {
+    if (!searchState.matches.length) {
+        searchState.index = -1;
+        updateSearchCount(countEl);
+        return;
+    }
+
+    searchState.index = (nextIndex + searchState.matches.length) % searchState.matches.length;
+    const match = searchState.matches[searchState.index];
+    revealActiveSource = true;
+    lastClickedHref = null;
+    cm.setSelection(match.from, match.to);
+    cm.focus();
+    updateActiveParagraph(cm);
+    scheduleCenteredSearchMatch(cm, match);
+    updateSearchCount(countEl);
+}
+
+function refreshSearch(cm, input, countEl, { keepIndex = false, activate = false } = {}) {
+    const previousIndex = searchState.index;
+    searchState.query = input.value;
+    searchState.matches = buildSearchMatches(cm, searchState.query);
+    searchState.index = -1;
+
+    if (!searchState.query || !searchState.matches.length) {
+        updateSearchCount(countEl);
+        return;
+    }
+
+    const nextIndex = keepIndex ? Math.max(previousIndex, 0) : 0;
+    if (!activate) {
+        searchState.index = Math.min(nextIndex, searchState.matches.length - 1);
+        updateSearchCount(countEl);
+        return;
+    }
+    selectSearchMatch(cm, countEl, nextIndex);
+}
+
+function clearSearch(input, countEl) {
+    input.value = '';
+    searchState = { query: '', matches: [], index: -1 };
+    updateSearchCount(countEl);
+    input.focus();
+}
+
+function createToolbarSearch(cm) {
+    const form = document.createElement('form');
+    form.className = 'toolbar-search';
+    form.role = 'search';
+
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-search';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = 'Search';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('aria-label', 'Search document');
+
+    const count = document.createElement('span');
+    count.className = 'toolbar-search-count';
+    count.setAttribute('aria-live', 'polite');
+
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'toolbar-search-clear';
+    clear.title = 'Clear search';
+    clear.setAttribute('aria-label', 'Clear search');
+    const clearIcon = document.createElement('i');
+    clearIcon.className = 'fas fa-times';
+    clearIcon.setAttribute('aria-hidden', 'true');
+    clear.appendChild(clearIcon);
+
+    const previous = document.createElement('button');
+    previous.type = 'button';
+    previous.title = 'Previous match';
+    previous.setAttribute('aria-label', 'Previous match');
+    const previousIcon = document.createElement('i');
+    previousIcon.className = 'fas fa-chevron-up';
+    previousIcon.setAttribute('aria-hidden', 'true');
+    previous.appendChild(previousIcon);
+
+    const next = document.createElement('button');
+    next.type = 'submit';
+    next.title = 'Next match';
+    next.setAttribute('aria-label', 'Next match');
+    const nextIcon = document.createElement('i');
+    nextIcon.className = 'fas fa-chevron-down';
+    nextIcon.setAttribute('aria-hidden', 'true');
+    next.appendChild(nextIcon);
+
+    form.append(icon, input, count, clear, previous, next);
+
+    input.addEventListener('input', () => refreshSearch(cm, input, count));
+    input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count, { activate: true });
+        } else {
+            selectSearchMatch(cm, count, searchState.index + (event.shiftKey ? -1 : 1));
+        }
+    });
+    clear.addEventListener('click', () => clearSearch(input, count));
+    previous.addEventListener('click', () => {
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count);
+        }
+        selectSearchMatch(cm, count, searchState.index - 1);
+    });
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!searchState.query || searchState.query !== input.value) {
+            refreshSearch(cm, input, count);
+        }
+        selectSearchMatch(cm, count, searchState.index + 1);
+    });
+    cm.on('change', () => {
+        if (input.value) refreshSearch(cm, input, count, { keepIndex: true });
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key.toLowerCase() !== 'f' || !(event.metaKey || event.ctrlKey)) return;
+        event.preventDefault();
+        focusSearchInput(input);
+    });
+
+    return form;
+}
+
+function initToolbarSearch(cm) {
+    const toolbar = elements.editorPane.querySelector('.editor-toolbar');
+    if (!toolbar || toolbar.querySelector('.toolbar-search')) return;
+    toolbar.appendChild(createToolbarSearch(cm));
+}
+
+// ── Live preview ──────────────────────────────────────────────────────
+function enableLivePreview({ revealSource = false } = {}) {
+    livePreviewActive = true;
+    revealActiveSource = revealSource;
+    const pane = elements.editorPane;
+    pane.classList.add('lp-mode');
+    if (state.easymde) updateActiveParagraph(state.easymde.codemirror);
+}
+
+// ── Legal numbering toggle ────────────────────────────────────────────
+function setLegalNumbering(active) {
+    legalNumberingActive = active;
+    localStorage.setItem(LS_LEGAL_NUMBERING, String(active));
+    const cm = state.easymde?.codemirror;
+    if (active) {
+        document.body.classList.add('legal-numbering');
+        if (cm) updateHeadingClasses(cm);
+        if (legalBtn) { legalBtn.classList.add('active'); legalBtn.title = 'Remove Legal Numbering'; }
+    } else {
+        document.body.classList.remove('legal-numbering');
+        if (cm) {
+            cm.operation(() => {
+                for (let i = 0; i < cm.lineCount(); i++) {
+                    const h = cm.getLineHandle(i);
+                    if (h) {
+                        HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+                        cm.removeLineClass(h, 'wrap', 'lp-heading-numbered');
+                    }
+                }
+            });
+            headingNumberByLine = new Map();
+        }
+        if (legalBtn) { legalBtn.classList.remove('active'); legalBtn.title = 'Legal Numbering'; }
+    }
+}
+
+// ── Public API ────────────────────────────────────────────────────────
+export function buildScrollMap() { state.scrollMap = []; }
+
+export function refreshState() {
+    if (!state.easymde) return;
+    const cm = state.easymde.codemirror;
+    enableLivePreview();
+    updateHeadingClasses(cm);
+    updateListMarkers(cm);
+    updateActiveParagraph(cm);
 }
 
 export function initEditor(onChangeCallback) {
+    const legalNumberingToolbarBtn = {
+        name: 'legal-numbering',
+        action: () => setLegalNumbering(!legalNumberingActive),
+        className: 'fa fa-list-ol',
+        title: legalNumberingActive ? 'Remove Legal Numbering' : 'Legal Numbering',
+    };
+    const unorderedListToolbarBtn = {
+        name: 'unordered-list',
+        action: toggleUnorderedList,
+        className: 'fa fa-list-ul',
+        title: 'Generic List',
+    };
+
     state.easymde = new EasyMDE({
         element: document.getElementById('editor'),
         initialValue: '<!-- Select or create a file to begin -->',
@@ -77,71 +735,74 @@ export function initEditor(onChangeCallback) {
         maxHeight: '100%',
         sideBySideFullscreen: false,
         syncSideBySide: false,
-        toolbar: ["bold", "italic", "heading", "|", "quote", "unordered-list", "ordered-list", "|", "link", "image", "table", "|", "preview", "side-by-side", "|", "guide"],
-        codemirror: { indentUnit: 4, indentWithTabs: false, tabSize: 4 }
+        parsingConfig: { highlightFormatting: true },
+        shortcuts: {
+            togglePreview: null,
+            toggleSideBySide: null,
+            toggleFullScreen: null,
+        },
+        toolbar: [
+            'bold', 'italic', 'heading', '|',
+            'quote', unorderedListToolbarBtn, 'ordered-list', '|',
+            'link', 'image', 'table', '|',
+            legalNumberingToolbarBtn, '|',
+            'guide'
+        ],
+        renderingConfig: {
+            sanitizerFunction: sanitizeRenderedHtml
+        },
+        codemirror: { indentUnit: 4, indentWithTabs: true, tabSize: 4 }
     });
 
-    const editorScroller = state.easymde.codemirror.getScrollerElement();
-    editorScroller.addEventListener('scroll', () => {
-        clearTimeout(scrollSyncTimeout);
-        scrollSyncTimeout = setTimeout(syncPreviewScroll, 50);
+    const cm = state.easymde.codemirror;
+    enableLivePreview();
+    initLivePreviewLinks(cm);
+    initHtmlPaste(cm);
+
+    // Apply persisted state once the toolbar DOM exists
+    setTimeout(() => {
+        legalBtn = elements.editorPane.querySelector('button.legal-numbering');
+        initToolbarEditingMode(cm);
+        initToolbarSearch(cm);
+        if (legalNumberingActive) setLegalNumbering(true);
+    }, 0);
+
+    cm.on('cursorActivity', () => updateActiveParagraph(cm));
+    cm.on('keydown', () => {
+        revealActiveSource = true;
+        updateActiveParagraph(cm);
     });
-
-    blockBuiltInSideBySideSync();
-
-    const observer = new MutationObserver(() => {
-        const sideBySideButton = elements.editorPane.querySelector('button[title^="Toggle Side by Side"]');
-        if (sideBySideButton) {
-            observer.disconnect();
-            sideBySideButton.addEventListener('click', () => {
-                setTimeout(() => {
-                    const editorWrapper = elements.editorPane.querySelector('.CodeMirror-wrap');
-                    const preview = elements.editorPane.querySelector('.editor-preview-side');
-                    if (editorWrapper && preview) preview.style.height = `${editorWrapper.offsetHeight}px`;
-                    state.easymde.codemirror.refresh();
-                    buildScrollMap(state.easymde.value());
-                }, 50);
-            });
-        }
+    cm.on('blur', () => {
+        if (preserveRevealOnToolbarAction) return;
+        revealActiveSource = false;
+        lastClickedHref = null;
+        updateActiveParagraph(cm);
     });
-    observer.observe(elements.editorPane, { childList: true, subtree: true });
-
-    state.easymde.codemirror.on('change', () => onChangeCallback(state.easymde.value()));
+    cm.on('renderLine', (_cm, line, element) => applyHeadingNumberToLine(cm, line, element));
+    cm.on('viewportChange', () => {
+        flushVisibleHeadingNumberCheck(cm);
+    });
+    cm.on('scroll', () => scheduleVisibleHeadingNumberCheck(cm));
+    cm.on('change', () => {
+        scheduleHeadingUpdate(cm);
+        updateListMarkers(cm);
+        onChangeCallback(state.easymde.value());
+    });
 
     return state.easymde;
 }
 
 export function handleTocClick(e) {
     e.preventDefault();
-    const a = e.currentTarget;
+    const a    = e.currentTarget;
     const line = Number(a.dataset.line);
-    const levelTxt = a.dataset.lvl;
-    const headingTxt = a.dataset.txt;
-    const cm = state.easymde.codemirror;
-
+    const cm   = state.easymde.codemirror;
+    revealActiveSource = false;
+    lastClickedHref = null;
     cm.setCursor({ line, ch: 0 });
     cm.getInputField().focus({ preventScroll: true });
+    updateActiveParagraph(cm);
     const scroller = cm.getScrollerElement();
     scroller.scrollTop = Math.max(0, cm.charCoords({ line, ch: 0 }, 'local').top - TOC_CLICK_OFFSET);
     elements.editorPane.scrollTop = 0;
-
-    if (state.easymde.isSideBySideActive() || state.easymde.isPreviewActive()) {
-        requestAnimationFrame(() => {
-            const previewSel = state.easymde.isSideBySideActive() ? '.editor-preview-side' : '.editor-preview';
-            const preview = elements.editorPane.querySelector(previewSel);
-            if (!preview) return;
-            const headings = preview.querySelectorAll(`h${levelTxt}`);
-            const target = Array.from(headings).find(h => h.textContent.trim() === headingTxt);
-            if (target) {
-                if (state.easymde.isSideBySideActive()) {
-                    preview.scrollTop = Math.max(0, target.offsetTop - TOC_CLICK_OFFSET);
-                } else {
-                    target.scrollIntoView({ block: 'start' });
-                    window.scrollBy(0, -TOC_CLICK_OFFSET);
-                }
-            }
-        });
-    }
 }
-
-export { buildScrollMap };

@@ -10,10 +10,14 @@ services:
     container_name: edito
     # Restart the container automatically unless it is explicitly stopped.
     restart: unless-stopped
+    environment:
+      # The app binds to localhost by default. In Docker it must listen on all
+      # container interfaces, while the host port below stays localhost-only.
+      HOST: 0.0.0.0
     ports:
       # Map port 3000 on the host machine to port 3000 in the container.
       # Format: "HOST:CONTAINER"
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       # Mount the local 'data' directory into the container at '/app/data'.
       # This is a "bind mount". It ensures your markdown files are persistent

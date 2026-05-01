@@ -46,7 +46,7 @@ export async function saveFile(filePath, content) {
     }
 }
 
-export async function createItem(type, name, parentPath) {
+export async function createItem(name, type, parentPath) {
     state.ignoreNextWatcherEvent = true;
     return await apiRequest('/api/files/create', {
         method: 'POST',

@@ -15,6 +15,8 @@
     --button-hover-bg: #dee2e6;
     --notification-bg: rgba(0, 0, 0, 0.7);
     --notification-text: #fff;
+    /* Shared toolbar row height — must match EasyMDE toolbar height */
+    --toolbar-row-height: 42px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,7 +45,7 @@ a { cursor: pointer; }
 
 /* File Pane (Left) */
 #file-pane { width: 15%; min-width: 180px; background-color: var(--secondary-bg); border-right: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
-.file-actions { padding: 10px; border-bottom: var(--pane-border); display: flex; gap: 10px; flex-shrink: 0; }
+.file-actions { padding: 0 10px; border-bottom: var(--pane-border); display: flex; gap: 10px; flex-shrink: 0; align-items: center; height: var(--toolbar-row-height); box-sizing: border-box; }
 .file-actions button { background: var(--button-bg); border: 1px solid #ccc; border-radius: 3px; padding: 5px 8px; cursor: pointer; font-size: 1.1em; color: var(--icon-color); }
 .file-actions button:hover:not(:disabled) { background: var(--button-hover-bg); }
 .file-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -61,7 +63,53 @@ a { cursor: pointer; }
 /* --- EasyMDE Integration Styles --- */
 #editor { display: none; }
 .EasyMDEContainer { display: flex; flex-direction: column; height: 100%; border: none !important; box-shadow: none !important; min-height: 0; }
-.editor-toolbar { flex-shrink: 0; border-bottom: 1px solid #ddd; }
+.editor-toolbar { flex-shrink: 0; border-bottom: var(--pane-border) !important; height: var(--toolbar-row-height); box-sizing: border-box; display: flex; align-items: center; }
+.toolbar-search {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: var(--secondary-bg);
+    color: var(--muted-text);
+    flex: 0 1 260px;
+    min-width: 150px;
+    max-width: 320px;
+}
+.toolbar-search input {
+    width: 100%;
+    min-width: 56px;
+    height: 24px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+}
+.toolbar-search-count {
+    min-width: 34px;
+    text-align: right;
+    color: var(--muted-text);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+.toolbar-search button {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--icon-color);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+.toolbar-search button:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
 .CodeMirror-wrap { flex-grow: 1; min-height: 0; position: relative; }
 .CodeMirror { height: 100% !important; font-size: 16px; line-height: 1.6; }
 .editor-preview, .editor-preview-side {
@@ -88,7 +136,7 @@ a { cursor: pointer; }
 
 /* Outline Pane (Right) */
 #outline-pane { width: 15%; min-width: 150px; background-color: var(--secondary-bg); border-left: var(--pane-border); display: flex; flex-direction: column; overflow: hidden; }
-#outline-pane h2 { font-size: 1.1em; padding: 10px 15px; margin: 0; border-bottom: var(--pane-border); flex-shrink: 0; }
+#outline-pane h2 { font-size: 1.1em; padding: 0 15px; margin: 0; border-bottom: var(--pane-border); flex-shrink: 0; display: flex; align-items: center; height: var(--toolbar-row-height); box-sizing: border-box; }
 #outline-list-container { flex-grow: 1; overflow-y: auto; padding: 10px 0; }
 #outline-list { list-style: none; padding: 0; margin: 0; }
 #outline-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -102,8 +150,10 @@ a { cursor: pointer; }
 #outline-list a.h6 { padding-left: 65px; font-size: 0.8em; color: var(--muted-text); }
 
 /* Footer (Status Bar) */
-#footer { height: var(--footer-height); background-color: var(--secondary-bg); border-top: var(--pane-border); padding: 0 15px; display: flex; align-items: center; font-size: 0.85em; color: var(--muted-text); position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; gap: 10px; }
-#status-sync { margin-left: auto; font-style: italic; font-weight: bold; padding: 1px 5px; border-radius: 3px; }
+#status-bar { height: var(--footer-height); background-color: var(--secondary-bg); border-top: var(--pane-border); padding: 0 15px; display: flex; align-items: center; font-size: 0.85em; color: var(--muted-text); position: fixed; bottom: 0; left: 0; width: 100%; z-index: 10; gap: 10px; }
+#status-bar > span { flex-shrink: 0; }
+#status-file { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status-sync { margin-left: auto; flex: 0 0 auto; white-space: nowrap; font-style: italic; font-weight: bold; padding: 1px 5px; border-radius: 3px; }
 .sync-saving { color: #b95000; background-color: #fff3e0; }
 .sync-saved { color: #155724; background-color: #d4edda; }
 .sync-error { color: #721c24; background-color: #f8d7da; }
@@ -156,3 +206,204 @@ a { cursor: pointer; }
 .editor-preview h6,
 .editor-preview-side h6       { font-size: 1rem                  !important; margin-left: 6em;    }
 /* ====================================================================== */
+
+/* Resize handles */
+.resize-handle { width: 4px; flex-shrink: 0; background: var(--pane-border); cursor: col-resize; transition: background 0.15s; }
+.resize-handle:hover, .resize-handle:active { background: #aaa; }
+
+/* About modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 500; display: flex; align-items: center; justify-content: center; }
+.modal-overlay.hidden { display: none; }
+.modal-box { background: var(--secondary-bg); border-radius: 6px; padding: 30px 35px; min-width: 320px; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 12px; }
+.modal-box h2 { font-size: 1.6em; margin: 0; }
+.modal-box p { margin: 0; line-height: 1.5; }
+.modal-box a { color: var(--link-color); }
+.modal-license { font-size: 0.85em; color: var(--muted-text); }
+.modal-close-btn { align-self: flex-end; margin-top: 8px; padding: 6px 18px; background: var(--button-bg); border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 0.95em; }
+.modal-close-btn:hover { background: var(--button-hover-bg); }
+
+/* Legal numbering — applied when body.legal-numbering is set */
+
+/* Editor heading numbers use CSS content fed by JS-computed custom properties.
+   This avoids CodeMirror viewport virtualization resetting CSS counters. */
+body.legal-numbering #editor-pane.lp-mode .lp-heading-numbered:not(.lp-active-para) .cm-header:not(.cm-formatting)::before {
+    content: var(--lp-heading-number);
+}
+
+/* Outline numbering is precomputed with the same full-document pass as editor numbering. */
+body.legal-numbering #outline-list li a::before { content: var(--outline-number); }
+
+/* ── Live Preview mode (lp-mode) ─────────────────────────────────────── */
+/* CodeMirror remains the editing surface. Markdown syntax tokens are
+   invisible outside the active paragraph, while the document text keeps
+   CodeMirror's rendered Markdown styling. */
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-header,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-quote,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-strong,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-em,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-strikethrough,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-code,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-code-block,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-list,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-task,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-link,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-link-string,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-image,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-formatting-escape,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .cm-url {
+    display: none !important;
+}
+
+#editor-pane.lp-mode .CodeMirror pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror pre.CodeMirror-line-like {
+    tab-size: 4;
+}
+
+#editor-pane.lp-mode .lp-active-para .cm-tab {
+    display: inline-block;
+    width: 4ch;
+}
+
+#editor-pane.lp-mode .lp-active-para {
+    background: rgba(0, 122, 255, 0.07);
+    box-shadow: inset 3px 0 0 rgba(0, 122, 255, 0.22);
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading:not(.lp-active-para) .cm-formatting-header,
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading:not(.lp-active-para) .cm-header {
+    display: inline-block !important;
+    color: inherit !important;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-numbered,
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading {
+    padding-top: 0.65em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-1 {
+    padding-top: 0.85em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-heading-numbered pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror-code > .lp-empty-heading pre.CodeMirror-line {
+    padding-top: 0.18em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) {
+    --lp-list-text-start: 2.2em;
+    --lp-marker-width: 1.1em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-1:not(.lp-active-para) {
+    --lp-list-text-start: 4.4em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-2:not(.lp-active-para) {
+    --lp-list-text-start: 6.7em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-3:not(.lp-active-para) {
+    --lp-list-text-start: 9em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-4:not(.lp-active-para) {
+    --lp-list-text-start: 11.3em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line-depth-5:not(.lp-active-para) {
+    --lp-list-text-start: 13.6em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror-code > .lp-list-line:not(.lp-active-para) pre.CodeMirror-line-like {
+    padding-left: var(--lp-list-text-start);
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker {
+    color: transparent !important;
+    display: inline-block !important;
+    font-size: 0 !important;
+    text-decoration: none !important;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker::after {
+    color: var(--text-color);
+    content: "\2022\00a0";
+    display: inline-block;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: calc(-1 * var(--lp-marker-width));
+    text-align: center;
+    vertical-align: 0.03em;
+    width: var(--lp-marker-width);
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-1::after {
+    border: 1px solid var(--text-color);
+    border-radius: 50%;
+    box-sizing: border-box;
+    content: "";
+    height: 0.3em;
+    margin-right: calc(var(--lp-marker-width) - 0.3em);
+    vertical-align: 0.02em;
+    width: 0.3em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-2::after {
+    content: "\25AA\00a0";
+    font-size: 16px;
+    font-weight: 600;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-3::after,
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-5::after {
+    border: 1.5px solid var(--text-color);
+    border-radius: 50%;
+    box-sizing: border-box;
+    content: "";
+    height: 0.46em;
+    margin-right: calc(var(--lp-marker-width) - 0.46em);
+    vertical-align: 0.03em;
+    width: 0.46em;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > :not(.lp-active-para) .lp-list-marker-depth-4::after {
+    content: "\25AA\00a0";
+    font-size: 15px;
+    font-weight: 600;
+}
+
+/* Keep rendered Markdown semantics visible in the editable document. */
+#editor-pane.lp-mode .cm-header-1 { font-size: 1.8em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-2 { font-size: 1.5em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-3 { font-size: 1.25em; font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-header-4 { font-size: 1.1em; font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-header-5,
+#editor-pane.lp-mode .cm-header-6 { font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-link:not(.cm-formatting) { color: var(--link-color); text-decoration: underline; }
+#editor-pane.lp-mode .cm-link:not(.cm-formatting):hover { cursor: pointer; }
+#editor-pane.lp-mode .cm-quote:not(.cm-formatting) { color: var(--muted-text); font-style: italic; }
+
+/* Active paragraph: expose the source syntax without switching modes. */
+#editor-pane.lp-mode .lp-active-para .cm-formatting,
+#editor-pane.lp-mode .lp-active-para .cm-url {
+    display: inline !important;
+    color: inherit !important;
+    text-decoration-color: currentColor !important;
+}
+
+#editor-pane.lp-mode .lp-active-para .cm-formatting-header {
+    display: inline-block !important;
+}
+
+#editor-pane.lp-mode .lp-active-para .lp-list-marker {
+    color: inherit !important;
+    font-size: inherit !important;
+}
+
+#editor-pane.lp-mode .lp-active-para .lp-list-marker::after {
+    content: none;
+}

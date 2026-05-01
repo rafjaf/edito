@@ -19,7 +19,7 @@ export function updateFileList(files, onFolderClick, onFileClick) {
     if (state.currentFolder) {
         const parentPath = state.currentFolder.includes('/') ? state.currentFolder.substring(0, state.currentFolder.lastIndexOf('/')) : '';
         const li = document.createElement('li');
-        li.innerHTML = `<span class="icon"><i class="fas fa-arrow-up"></i></span> ..`;
+        li.append(createIcon('fa-arrow-up'), document.createTextNode(' ..'));
         li.dataset.path = parentPath;
         li.dataset.type = 'folder';
         li.addEventListener('click', () => onFolderClick(parentPath));
@@ -28,7 +28,7 @@ export function updateFileList(files, onFolderClick, onFileClick) {
     files.forEach(item => {
         const li = document.createElement('li');
         const iconClass = item.type === 'folder' ? 'fa-folder' : 'fa-file-alt';
-        li.innerHTML = `<span class="icon"><i class="fas ${iconClass}"></i></span> ${item.name}`;
+        li.append(createIcon(iconClass), document.createTextNode(` ${item.name}`));
         const itemPath = state.currentFolder ? `${state.currentFolder}/${item.name}` : item.name;
         li.dataset.path = itemPath;
         li.dataset.type = item.type;
@@ -49,20 +49,29 @@ export function updateFileList(files, onFolderClick, onFileClick) {
 export function generateOutline(content, onTocClick) {
     elements.outlineList.innerHTML = '';
     const headingRx = /^(#{1,6})\s+(.*)$/gm;
+    const counters = [0, 0, 0, 0, 0, 0];
     let match;
     while ((match = headingRx.exec(content)) !== null) {
         const level = match[1].length;
-        const title = match[2].trim();
+        counters[level - 1]++;
+        for (let i = level; i < counters.length; i++) counters[i] = 0;
+        const rawTitle = match[2].trim();
+        // Strip bold markers (**...**  or __...__), keep the inner text
+        const strippedBold = rawTitle.replace(/(\*\*|__)(.+?)\1/g, '$2');
+        // Keep plain text for dataset (for scroll-to)
+        const plainTitle = strippedBold.replace(/\*(.+?)\*/g, '$1');
         const lineNumber = (content.slice(0, match.index).match(/\n/g) || []).length;
         const a = document.createElement('a');
-        a.textContent = title;
-        a.href = 'javascript:void(0)';
+        appendInlineItalic(a, strippedBold);
+        a.href = '#';
         a.className = `h${level}`;
+        a.style.setProperty('--outline-number', JSON.stringify(`${counters.slice(0, level).join('.')}. `));
         a.dataset.line = lineNumber;
         a.dataset.lvl = level;
-        a.dataset.txt = title;
+        a.dataset.txt = plainTitle;
         a.addEventListener('click', onTocClick);
         const li = document.createElement('li');
+        li.dataset.level = level;
         li.appendChild(a);
         elements.outlineList.appendChild(li);
     }
@@ -128,4 +137,33 @@ function formatBytes(bytes, decimals = 2) {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function createIcon(iconClass) {
+    const span = document.createElement('span');
+    span.className = 'icon';
+    const icon = document.createElement('i');
+    icon.className = `fas ${iconClass}`;
+    span.appendChild(icon);
+    return span;
+}
+
+function appendInlineItalic(parent, text) {
+    const italicRx = /\*(.+?)\*/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = italicRx.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parent.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+        const em = document.createElement('em');
+        em.textContent = match[1];
+        parent.appendChild(em);
+        lastIndex = italicRx.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
 }

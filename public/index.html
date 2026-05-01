@@ -41,9 +41,13 @@
             </nav>
         </aside>
 
+        <div class="resize-handle" id="resize-left" title="Drag to resize"></div>
+
         <section id="editor-pane">
             <textarea id="editor"></textarea>
         </section>
+
+        <div class="resize-handle" id="resize-right" title="Drag to resize"></div>
 
         <aside id="outline-pane">
             <h2>Outline</h2>
@@ -66,8 +70,20 @@
     <div id="notifications-container">
     </div>
 
+    <!-- About modal -->
+    <div id="about-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="about-title">
+        <div class="modal-box">
+            <h2 id="about-title">Edito</h2>
+            <p>A simple, self-hosted Markdown editor.</p>
+            <p>By <strong>rafjaf</strong> &mdash; <a href="https://github.com/rafjaf/edito" target="_blank" rel="noopener noreferrer">github.com/rafjaf/edito</a></p>
+            <p class="modal-license">Licensed under the GNU General Public License v3.</p>
+            <button id="about-modal-close" class="modal-close-btn">Close</button>
+        </div>
+    </div>
+
     <!-- Libraries -->
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/dompurify/purify.min.js"></script>
     <script src="/easymde/easymde.min.js"></script>
 
     <!-- App script -->
