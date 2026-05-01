@@ -16,9 +16,11 @@ let headingUpdateTimeout = null;
 let revealActiveSource   = false;
 let lastClickedHref      = null;
 let measurementRefreshFrame = null;
+let preserveRevealOnToolbarAction = false;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const HEADING_RX = /^(#{1,6})\s/;
+const EMPTY_HEADING_RX = /^\s{0,3}#{1,6}\s*$/;
 const LIST_MARKER_RX = /^(\t*)-\s+/;
 const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
 const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
@@ -107,7 +109,9 @@ function updateHeadingClasses(cm) {
             const h = cm.getLineHandle(i);
             if (!h) continue;
             HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
-            const m = HEADING_RX.exec(cm.getLine(i));
+            cm.removeLineClass(h, 'wrap', 'lp-empty-heading');
+            const line = cm.getLine(i);
+            const m = HEADING_RX.exec(line);
             if (m) {
                 const level = m[1].length;
                 counters[level - 1]++;
@@ -115,8 +119,10 @@ function updateHeadingClasses(cm) {
                 headingNumberByLine.set(i, `${counters.slice(0, level).join('.')}. `);
                 cm.addLineClass(h, 'wrap', `lp-heading-${level}`);
                 cm.addLineClass(h, 'wrap', 'lp-heading-numbered');
+                if (line.slice(m[0].length).trim() === '') cm.addLineClass(h, 'wrap', 'lp-empty-heading');
             } else {
                 cm.removeLineClass(h, 'wrap', 'lp-heading-numbered');
+                if (EMPTY_HEADING_RX.test(line)) cm.addLineClass(h, 'wrap', 'lp-empty-heading');
             }
         }
         applyHeadingNumbersToVisibleLines(cm);
@@ -124,7 +130,6 @@ function updateHeadingClasses(cm) {
 }
 
 function scheduleHeadingUpdate(cm) {
-    if (!legalNumberingActive) return;
     clearTimeout(headingUpdateTimeout);
     headingUpdateTimeout = setTimeout(() => updateHeadingClasses(cm), 300);
 }
@@ -240,6 +245,143 @@ function initLivePreviewLinks(cm) {
     });
 }
 
+function toggleUnorderedList(editor) {
+    const cm = editor.codemirror || editor;
+    const ranges = cm.listSelections().map((selection) => {
+        const from = selection.from();
+        const to = selection.to();
+        const endLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+        return { start: from.line, end: endLine };
+    });
+
+    cm.operation(() => {
+        ranges.forEach(({ start, end }) => {
+            const lines = [];
+            for (let lineNo = start; lineNo <= end; lineNo++) {
+                const text = cm.getLine(lineNo);
+                if (text.trim()) lines.push({ lineNo, text });
+            }
+            if (!lines.length) lines.push({ lineNo: start, text: cm.getLine(start) || '' });
+
+            const removeBullets = lines.every(({ text }) => /^[\t ]*[-*+]\s+/.test(text));
+            lines.forEach(({ lineNo, text }) => {
+                if (removeBullets) {
+                    const marker = /^[\t ]*[-*+]\s+/.exec(text);
+                    const indentLength = /^[\t ]*/.exec(text)[0].length;
+                    cm.replaceRange('', { line: lineNo, ch: indentLength }, { line: lineNo, ch: marker[0].length });
+                    return;
+                }
+                if (/^[\t ]*[-*+]\s+/.test(text)) return;
+                const indentLength = /^[\t ]*/.exec(text)[0].length;
+                cm.replaceRange('- ', { line: lineNo, ch: indentLength });
+            });
+        });
+    });
+
+    revealActiveSource = true;
+    updateActiveParagraph(cm);
+    updateListMarkers(cm);
+    cm.focus();
+}
+
+function markdownEscapeLinkText(text) {
+    return text.replace(/\]/g, '\\]');
+}
+
+function normalizeMarkdownBlock(text) {
+    return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function htmlToMarkdown(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const renderChildren = (node, context = {}) => Array.from(node.childNodes)
+        .map(child => renderNode(child, context))
+        .join('');
+
+    const renderList = (node, ordered, depth) => {
+        let index = 1;
+        const lines = Array.from(node.children)
+            .filter(child => child.tagName?.toLowerCase() === 'li')
+            .map((li) => {
+                const nested = [];
+                const content = Array.from(li.childNodes).map((child) => {
+                    const tag = child.tagName?.toLowerCase();
+                    if (tag === 'ul' || tag === 'ol') {
+                        nested.push(renderList(child, tag === 'ol', depth + 1).trimEnd());
+                        return '';
+                    }
+                    return renderNode(child, { inList: true });
+                }).join('').trim();
+                const marker = ordered ? `${index++}. ` : '- ';
+                const current = `${'\t'.repeat(depth)}${marker}${content}`;
+                return nested.length ? `${current}\n${nested.join('\n')}` : current;
+            });
+        return `${lines.join('\n')}\n\n`;
+    };
+
+    const renderNode = (node, context = {}) => {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\s+/g, ' ');
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'br') return '\n';
+        if (tag === 'a') {
+            const href = node.getAttribute('href');
+            const text = renderChildren(node, context).trim() || href || '';
+            return href ? `[${markdownEscapeLinkText(text)}](${href})` : text;
+        }
+        if (tag === 'strong' || tag === 'b') return `**${renderChildren(node, context).trim()}**`;
+        if (tag === 'em' || tag === 'i') return `*${renderChildren(node, context).trim()}*`;
+        if (tag === 'code') return `\`${renderChildren(node, context).trim()}\``;
+        if (tag === 'pre') return `\n\`\`\`\n${node.textContent.trim()}\n\`\`\`\n\n`;
+        if (/^h[1-6]$/.test(tag)) return `${'#'.repeat(Number(tag[1]))} ${renderChildren(node, context).trim()}\n\n`;
+        if (tag === 'ul' || tag === 'ol') return renderList(node, tag === 'ol', context.listDepth || 0);
+        if (tag === 'p') return `${renderChildren(node, context).trim()}\n\n`;
+        if (tag === 'div' || tag === 'section' || tag === 'article') {
+            const rendered = renderChildren(node, context).trim();
+            return rendered ? `${rendered}\n\n` : '';
+        }
+        return renderChildren(node, context);
+    };
+
+    return normalizeMarkdownBlock(renderChildren(doc.body).trim());
+}
+
+function initHtmlPaste(cm) {
+    cm.on('paste', (_cm, event) => {
+        const html = event.clipboardData?.getData('text/html');
+        if (!html) return;
+        const markdown = htmlToMarkdown(html);
+        if (!markdown) return;
+        event.preventDefault();
+        revealActiveSource = true;
+        cm.replaceSelection(markdown, 'around');
+        updateActiveParagraph(cm);
+    });
+}
+
+function initToolbarEditingMode(cm) {
+    const toolbar = elements.editorPane.querySelector('.editor-toolbar');
+    if (!toolbar) return;
+
+    toolbar.addEventListener('mousedown', () => {
+        preserveRevealOnToolbarAction = true;
+        revealActiveSource = true;
+        updateActiveParagraph(cm);
+    });
+
+    toolbar.addEventListener('click', () => {
+        setTimeout(() => {
+            preserveRevealOnToolbarAction = false;
+            revealActiveSource = true;
+            updateHeadingClasses(cm);
+            updateActiveParagraph(cm);
+            scheduleMeasurementRefresh(cm);
+        }, 0);
+    });
+}
+
 // ── Live preview ──────────────────────────────────────────────────────
 function enableLivePreview({ revealSource = false } = {}) {
     livePreviewActive = true;
@@ -283,7 +425,7 @@ export function refreshState() {
     if (!state.easymde) return;
     const cm = state.easymde.codemirror;
     enableLivePreview();
-    if (legalNumberingActive) updateHeadingClasses(cm);
+    updateHeadingClasses(cm);
     updateListMarkers(cm);
     updateActiveParagraph(cm);
 }
@@ -294,6 +436,12 @@ export function initEditor(onChangeCallback) {
         action: () => setLegalNumbering(!legalNumberingActive),
         className: 'fa fa-list-ol',
         title: legalNumberingActive ? 'Remove Legal Numbering' : 'Legal Numbering',
+    };
+    const unorderedListToolbarBtn = {
+        name: 'unordered-list',
+        action: toggleUnorderedList,
+        className: 'fa fa-list-ul',
+        title: 'Generic List',
     };
 
     state.easymde = new EasyMDE({
@@ -313,7 +461,7 @@ export function initEditor(onChangeCallback) {
         },
         toolbar: [
             'bold', 'italic', 'heading', '|',
-            'quote', 'unordered-list', 'ordered-list', '|',
+            'quote', unorderedListToolbarBtn, 'ordered-list', '|',
             'link', 'image', 'table', '|',
             legalNumberingToolbarBtn, '|',
             'guide'
@@ -324,10 +472,12 @@ export function initEditor(onChangeCallback) {
     const cm = state.easymde.codemirror;
     enableLivePreview();
     initLivePreviewLinks(cm);
+    initHtmlPaste(cm);
 
     // Apply persisted state once the toolbar DOM exists
     setTimeout(() => {
         legalBtn = elements.editorPane.querySelector('button.legal-numbering');
+        initToolbarEditingMode(cm);
         if (legalNumberingActive) setLegalNumbering(true);
     }, 0);
 
@@ -337,6 +487,7 @@ export function initEditor(onChangeCallback) {
         updateActiveParagraph(cm);
     });
     cm.on('blur', () => {
+        if (preserveRevealOnToolbarAction) return;
         revealActiveSource = false;
         lastClickedHref = null;
         updateActiveParagraph(cm);

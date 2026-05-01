@@ -58,13 +58,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadFileContent(filePath, isExternalReload = false) {
+    async function loadFileContent(filePath, isExternalReload = false, preloadedContent = null) {
         ui.setSyncStatus('loading');
         try {
-            const content = await api.fetchFileContent(filePath);
+            const content = preloadedContent ?? await api.fetchFileContent(filePath);
             if (isExternalReload && content === state.currentContent) {
                 ui.setSyncStatus('');
-                return;
+                return false;
             }
             clearEditorState(); // Clear previous state before loading new
             state.easymde.value(content);
@@ -87,9 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ui.setSyncStatus('');
             state.easymde.codemirror.focus();
+            return true;
         } catch (error) {
             clearEditorState();
             ui.setSyncStatus('');
+            return false;
         }
     }
 
@@ -223,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
     socket.on('connect', () => ui.showNotification('Connected', 'success', 1500));
     socket.on('disconnect', () => ui.showNotification('Disconnected', 'error'));
-    socket.on('file-changed', (data) => {
+    socket.on('file-changed', async (data) => {
         if (state.ignoreNextWatcherEvent) { state.ignoreNextWatcherEvent = false; return; }
         const changeParentDir = data.path.includes('/') ? data.path.substring(0, data.path.lastIndexOf('/')) : '';
         const changeName = data.path.substring(data.path.lastIndexOf('/') + 1);
@@ -232,8 +234,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 ui.showNotification(`File list updated: ${changeName} ${data.event}`, 'info', 2000);
                 loadFileList(state.currentFolder);
             } else if (data.event === 'change' && data.path === state.currentFilePath) {
-                ui.showNotification(`"${changeName}" changed externally. Reloading...`, 'warning', 3000);
-                loadFileContent(state.currentFilePath, true);
+                const reloaded = await loadFileContent(state.currentFilePath, true);
+                if (reloaded) {
+                    ui.showNotification(`"${changeName}" changed externally. Reloaded.`, 'warning', 3000);
+                }
             } else if (data.event === 'unlink' && data.path === state.currentFilePath) {
                 ui.showNotification(`"${changeName}" deleted externally. Clearing editor.`, 'warning', 3000);
                 clearEditorState();
