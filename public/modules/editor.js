@@ -10,44 +10,55 @@ let livePreviewActive    = localStorage.getItem(LS_LIVE_PREVIEW) === 'true';
 let legalNumberingActive = localStorage.getItem(LS_LEGAL_NUMBERING) === 'true';
 let livePreviewBtn       = null;
 let legalBtn             = null;
-let activeParagraphLines = [];
+// Store CodeMirror line *handles* so they survive edits/undos
+let activeParaHandles    = [];
 let headingUpdateTimeout = null;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const HEADING_RX = /^(#{1,6})\s/;
 
 // ── Paragraph tracking ────────────────────────────────────────────────
-function findParagraphBounds(cm, line) {
-    const lineCount = cm.lineCount();
-    let start = line, end = line;
+function findParagraphBounds(cm, lineNo) {
+    const last = cm.lastLine();
+    let start = lineNo, end = lineNo;
     while (start > 0 && cm.getLine(start - 1).trim() !== '') start--;
-    while (end < lineCount - 1 && cm.getLine(end + 1).trim() !== '') end++;
+    while (end < last && cm.getLine(end + 1).trim() !== '') end++;
     return { start, end };
 }
 
 function updateActiveParagraph(cm) {
-    activeParagraphLines.forEach(l => cm.removeLineClass(l, 'wrap', 'lp-active-para'));
-    activeParagraphLines = [];
-    if (!livePreviewActive) return;
-    const sels   = cm.listSelections();
-    const first  = sels[0].from().line;
-    const last   = sels[sels.length - 1].to().line;
-    const { start } = findParagraphBounds(cm, first);
-    const { end }   = findParagraphBounds(cm, last);
-    for (let l = start; l <= end; l++) {
-        cm.addLineClass(l, 'wrap', 'lp-active-para');
-        activeParagraphLines.push(l);
-    }
+    cm.operation(() => {
+        // Remove class from previously active lines (use handles — stale handles are ignored by CM)
+        activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+        activeParaHandles = [];
+        if (!livePreviewActive) return;
+        const sels  = cm.listSelections();
+        const first = sels[0].from().line;
+        const last  = sels[sels.length - 1].to().line;
+        const { start } = findParagraphBounds(cm, first);
+        const { end }   = findParagraphBounds(cm, last);
+        for (let l = start; l <= end; l++) {
+            const handle = cm.getLineHandle(l);
+            if (handle) {
+                cm.addLineClass(handle, 'wrap', 'lp-active-para');
+                activeParaHandles.push(handle);
+            }
+        }
+    });
 }
 
 // ── Heading line classes (drive CSS counters for legal numbering) ─────
 function updateHeadingClasses(cm) {
-    const n = cm.lineCount();
-    for (let i = 0; i < n; i++) {
-        HEADING_LEVELS.forEach(cls => cm.removeLineClass(i, 'wrap', cls));
-        const m = HEADING_RX.exec(cm.getLine(i));
-        if (m) cm.addLineClass(i, 'wrap', `lp-heading-${m[1].length}`);
-    }
+    cm.operation(() => {
+        const n = cm.lineCount();
+        for (let i = 0; i < n; i++) {
+            const h = cm.getLineHandle(i);
+            if (!h) continue;
+            HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+            const m = HEADING_RX.exec(cm.getLine(i));
+            if (m) cm.addLineClass(h, 'wrap', `lp-heading-${m[1].length}`);
+        }
+    });
 }
 
 function scheduleHeadingUpdate(cm) {
@@ -59,26 +70,28 @@ function scheduleHeadingUpdate(cm) {
 // ── Live preview toggle ───────────────────────────────────────────────
 function setLivePreview(active) {
     livePreviewActive = active;
-    localStorage.setItem(LS_LIVE_PREVIEW, active);
+    localStorage.setItem(LS_LIVE_PREVIEW, String(active));
     const pane = elements.editorPane;
     if (active) {
         pane.classList.add('lp-mode');
         updateActiveParagraph(state.easymde.codemirror);
         if (livePreviewBtn) { livePreviewBtn.classList.add('active'); livePreviewBtn.title = 'Exit Live Preview'; }
     } else {
+        // Remove active-para classes before removing lp-mode so no flash
+        const cm = state.easymde.codemirror;
+        cm.operation(() => {
+            activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
+        });
+        activeParaHandles = [];
         pane.classList.remove('lp-mode');
-        activeParagraphLines.forEach(l => state.easymde.codemirror.removeLineClass(l, 'wrap', 'lp-active-para'));
-        activeParagraphLines = [];
         if (livePreviewBtn) { livePreviewBtn.classList.remove('active'); livePreviewBtn.title = 'Live Preview'; }
     }
-    // Let CodeMirror recalculate line heights (headings change size)
-    requestAnimationFrame(() => state.easymde.codemirror.refresh());
 }
 
 // ── Legal numbering toggle ────────────────────────────────────────────
 function setLegalNumbering(active) {
     legalNumberingActive = active;
-    localStorage.setItem(LS_LEGAL_NUMBERING, active);
+    localStorage.setItem(LS_LEGAL_NUMBERING, String(active));
     const cm = state.easymde?.codemirror;
     if (active) {
         document.body.classList.add('legal-numbering');
@@ -86,10 +99,13 @@ function setLegalNumbering(active) {
         if (legalBtn) { legalBtn.classList.add('active'); legalBtn.title = 'Remove Legal Numbering'; }
     } else {
         document.body.classList.remove('legal-numbering');
-        // Remove heading classes — they are only needed for the CSS counters
         if (cm) {
-            for (let i = 0; i < cm.lineCount(); i++)
-                HEADING_LEVELS.forEach(cls => cm.removeLineClass(i, 'wrap', cls));
+            cm.operation(() => {
+                for (let i = 0; i < cm.lineCount(); i++) {
+                    const h = cm.getLineHandle(i);
+                    if (h) HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+                }
+            });
         }
         if (legalBtn) { legalBtn.classList.remove('active'); legalBtn.title = 'Legal Numbering'; }
     }
@@ -98,7 +114,6 @@ function setLegalNumbering(active) {
 // ── Public API ────────────────────────────────────────────────────────
 export function buildScrollMap() { state.scrollMap = []; }
 
-// Called by main.js after a file is loaded or cleared
 export function refreshState() {
     if (!state.easymde) return;
     const cm = state.easymde.codemirror;
@@ -111,13 +126,13 @@ export function initEditor(onChangeCallback) {
         name: 'live-preview',
         action: () => setLivePreview(!livePreviewActive),
         className: 'fa fa-eye',
-        title: 'Live Preview',
+        title: livePreviewActive ? 'Exit Live Preview' : 'Live Preview',
     };
     const legalNumberingToolbarBtn = {
         name: 'legal-numbering',
         action: () => setLegalNumbering(!legalNumberingActive),
         className: 'fa fa-list-ol',
-        title: 'Legal Numbering',
+        title: legalNumberingActive ? 'Remove Legal Numbering' : 'Legal Numbering',
     };
 
     state.easymde = new EasyMDE({
@@ -142,6 +157,7 @@ export function initEditor(onChangeCallback) {
 
     const cm = state.easymde.codemirror;
 
+    // Apply persisted state once the toolbar DOM exists
     setTimeout(() => {
         livePreviewBtn = elements.editorPane.querySelector('.fa-eye')?.closest('button');
         legalBtn       = elements.editorPane.querySelector('.fa-list-ol')?.closest('button');
@@ -160,9 +176,9 @@ export function initEditor(onChangeCallback) {
 
 export function handleTocClick(e) {
     e.preventDefault();
-    const a  = e.currentTarget;
+    const a    = e.currentTarget;
     const line = Number(a.dataset.line);
-    const cm = state.easymde.codemirror;
+    const cm   = state.easymde.codemirror;
     cm.setCursor({ line, ch: 0 });
     cm.getInputField().focus({ preventScroll: true });
     const scroller = cm.getScrollerElement();

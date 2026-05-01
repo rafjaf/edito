@@ -209,41 +209,52 @@ body.legal-numbering #outline-list li[data-level="5"] a::before { content: count
 body.legal-numbering #outline-list li[data-level="6"] a::before { content: counter(ol-h1) "." counter(ol-h2) "." counter(ol-h3) "." counter(ol-h4) "." counter(ol-h5) "." counter(ol-h6) ".\00a0"; }
 
 /* ── Live Preview mode (lp-mode) ─────────────────────────────────────── */
-/* The CodeMirror editor stays active at all times. In lp-mode, markdown
-   syntax characters are hidden with font-size:0 (keeps layout intact so
-   CodeMirror's cursor-coordinate mapping stays correct). The currently
-   edited paragraph restores raw markdown so you can see and edit it. */
+/* The CodeMirror editor stays fully active. In lp-mode, markdown syntax
+   characters are made transparent (same color as background) so they are
+   invisible but retain their layout dimensions — CodeMirror's cursor
+   coordinate mapping stays correct. The active paragraph restores them. */
 
-/* 1. Hide syntax characters */
+/* Characters to hide: color = background of the CodeMirror editor */
 #editor-pane.lp-mode .cm-formatting-header,
 #editor-pane.lp-mode .cm-formatting-strong,
 #editor-pane.lp-mode .cm-formatting-em,
 #editor-pane.lp-mode .cm-formatting-code,
+#editor-pane.lp-mode .cm-formatting-list,
 #editor-pane.lp-mode .cm-formatting-link,
 #editor-pane.lp-mode .cm-formatting-link-string,
-#editor-pane.lp-mode .cm-url { font-size: 0 !important; }
+#editor-pane.lp-mode .cm-url,
+#editor-pane.lp-mode .cm-formatting-task {
+    color: var(--secondary-bg) !important;
+}
 
-/* 2. Visual rendering of markdown elements */
-#editor-pane.lp-mode .cm-header-1:not(.cm-formatting) { font-size: 1.8em !important; font-weight: bold; line-height: 1.4; }
-#editor-pane.lp-mode .cm-header-2:not(.cm-formatting) { font-size: 1.5em !important; font-weight: bold; line-height: 1.4; }
-#editor-pane.lp-mode .cm-header-3:not(.cm-formatting) { font-size: 1.25em !important; font-weight: bold; }
-#editor-pane.lp-mode .cm-header-4:not(.cm-formatting) { font-size: 1.1em !important; font-weight: bold; }
-/* cm-strong is already bold; cm-em is already italic — no extra rule needed */
-/* Link text */
+/* 2. Visual rendering: headings get bigger, bold/italic are already styled by CM */
+#editor-pane.lp-mode .cm-header-1:not(.cm-formatting) { font-size: 1.8em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-2:not(.cm-formatting) { font-size: 1.5em; font-weight: bold; line-height: 1.4; display: inline-block; }
+#editor-pane.lp-mode .cm-header-3:not(.cm-formatting) { font-size: 1.25em; font-weight: bold; display: inline-block; }
+#editor-pane.lp-mode .cm-header-4:not(.cm-formatting) { font-size: 1.1em; font-weight: bold; display: inline-block; }
+/* Link text gets link styling */
 #editor-pane.lp-mode .cm-link:not(.cm-formatting) { color: var(--link-color); text-decoration: underline; }
 
-/* 3. Active paragraph: show raw markdown at normal size */
+/* 3. Active paragraph: restore the characters to normal color */
 #editor-pane.lp-mode .lp-active-para .cm-formatting-header,
 #editor-pane.lp-mode .lp-active-para .cm-formatting-strong,
 #editor-pane.lp-mode .lp-active-para .cm-formatting-em,
 #editor-pane.lp-mode .lp-active-para .cm-formatting-code,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-list,
 #editor-pane.lp-mode .lp-active-para .cm-formatting-link,
 #editor-pane.lp-mode .lp-active-para .cm-formatting-link-string,
-#editor-pane.lp-mode .lp-active-para .cm-url { font-size: inherit !important; }
+#editor-pane.lp-mode .lp-active-para .cm-url,
+#editor-pane.lp-mode .lp-active-para .cm-formatting-task {
+    color: inherit !important;
+}
 
-/* Reset heading sizes in active paragraph (show raw `# Heading` at body size) */
+/* Also reset heading sizes in the active paragraph (edit at body size) */
 #editor-pane.lp-mode .lp-active-para .cm-header-1,
 #editor-pane.lp-mode .lp-active-para .cm-header-2,
 #editor-pane.lp-mode .lp-active-para .cm-header-3,
-#editor-pane.lp-mode .lp-active-para .cm-header-4 { font-size: inherit !important; font-weight: normal !important; }
+#editor-pane.lp-mode .lp-active-para .cm-header-4 {
+    font-size: inherit !important;
+    font-weight: normal !important;
+    display: inline !important;
+}
 
