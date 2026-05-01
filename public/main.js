@@ -112,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ui.setSyncStatus('saved', 'No changes');
                 return;
             }
+            ui.setSyncStatus('saving');
             await api.saveFile(state.currentFilePath, content);
         }, SAVE_DEBOUNCE);
     }
