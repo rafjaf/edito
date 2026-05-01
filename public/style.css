@@ -176,22 +176,11 @@ a { cursor: pointer; }
 
 /* Legal numbering — applied when body.legal-numbering is set */
 
-/* CSS counters ride on CodeMirror line-wrapper divs tagged by JS */
-body.legal-numbering .CodeMirror-code { counter-reset: lh1 lh2 lh3 lh4 lh5 lh6; }
-body.legal-numbering .lp-heading-1 { counter-increment: lh1; counter-reset: lh2 lh3 lh4 lh5 lh6; }
-body.legal-numbering .lp-heading-2 { counter-increment: lh2; counter-reset: lh3 lh4 lh5 lh6; }
-body.legal-numbering .lp-heading-3 { counter-increment: lh3; counter-reset: lh4 lh5 lh6; }
-body.legal-numbering .lp-heading-4 { counter-increment: lh4; counter-reset: lh5 lh6; }
-body.legal-numbering .lp-heading-5 { counter-increment: lh5; counter-reset: lh6; }
-body.legal-numbering .lp-heading-6 { counter-increment: lh6; }
-
-/* Show counter prefix only in lp-mode for inactive (rendered) headings */
-body.legal-numbering #editor-pane.lp-mode .lp-heading-1:not(.lp-active-para) .cm-header-1:not(.cm-formatting)::before { content: counter(lh1) ".\00a0"; }
-body.legal-numbering #editor-pane.lp-mode .lp-heading-2:not(.lp-active-para) .cm-header-2:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) ".\00a0"; }
-body.legal-numbering #editor-pane.lp-mode .lp-heading-3:not(.lp-active-para) .cm-header-3:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) ".\00a0"; }
-body.legal-numbering #editor-pane.lp-mode .lp-heading-4:not(.lp-active-para) .cm-header-4:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) ".\00a0"; }
-body.legal-numbering #editor-pane.lp-mode .lp-heading-5:not(.lp-active-para) .cm-header-5:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) "." counter(lh5) ".\00a0"; }
-body.legal-numbering #editor-pane.lp-mode .lp-heading-6:not(.lp-active-para) .cm-header-6:not(.cm-formatting)::before { content: counter(lh1) "." counter(lh2) "." counter(lh3) "." counter(lh4) "." counter(lh5) "." counter(lh6) ".\00a0"; }
+/* Editor heading numbers use CSS content fed by JS-computed custom properties.
+   This avoids CodeMirror viewport virtualization resetting CSS counters. */
+body.legal-numbering #editor-pane.lp-mode .lp-heading-numbered:not(.lp-active-para) .cm-header:not(.cm-formatting)::before {
+    content: var(--lp-heading-number);
+}
 
 /* Outline */
 body.legal-numbering #outline-list { counter-reset: ol-h1 ol-h2 ol-h3 ol-h4 ol-h5 ol-h6; }
@@ -231,6 +220,32 @@ body.legal-numbering #outline-list li[data-level="6"] a::before { content: count
     display: none !important;
 }
 
+#editor-pane.lp-mode .CodeMirror pre.CodeMirror-line,
+#editor-pane.lp-mode .CodeMirror pre.CodeMirror-line-like {
+    tab-size: 4;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker {
+    color: transparent !important;
+    display: inline-block !important;
+    font-size: 0 !important;
+    text-decoration: none !important;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker::after {
+    color: var(--text-color);
+    content: "\2022\00a0";
+    font-size: 16px;
+}
+
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker-depth-1::after {
+    content: "\25E6\00a0";
+}
+
+#editor-pane.lp-mode .CodeMirror-code > div:not(.lp-active-para) .lp-list-marker-depth-2::after {
+    content: "\25AA\00a0";
+}
+
 /* Keep rendered Markdown semantics visible in the editable document. */
 #editor-pane.lp-mode .cm-header-1 { font-size: 1.8em; font-weight: bold; line-height: 1.4; display: inline-block; }
 #editor-pane.lp-mode .cm-header-2 { font-size: 1.5em; font-weight: bold; line-height: 1.4; display: inline-block; }
@@ -252,4 +267,13 @@ body.legal-numbering #outline-list li[data-level="6"] a::before { content: count
 
 #editor-pane.lp-mode .lp-active-para .cm-formatting-header {
     display: inline-block !important;
+}
+
+#editor-pane.lp-mode .lp-active-para .lp-list-marker {
+    color: inherit !important;
+    font-size: inherit !important;
+}
+
+#editor-pane.lp-mode .lp-active-para .lp-list-marker::after {
+    content: none;
 }

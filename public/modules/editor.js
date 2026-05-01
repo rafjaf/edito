@@ -10,15 +10,17 @@ let legalNumberingActive = localStorage.getItem(LS_LEGAL_NUMBERING) === 'true';
 let legalBtn             = null;
 // Store CodeMirror line *handles* so they survive edits/undos
 let activeParaHandles    = [];
+let listMarkerHandles    = [];
+let headingNumberByLine  = new Map();
 let headingUpdateTimeout = null;
+let revealActiveSource   = false;
+let lastClickedHref      = null;
 
 const HEADING_LEVELS = ['lp-heading-1','lp-heading-2','lp-heading-3','lp-heading-4','lp-heading-5','lp-heading-6'];
 const HEADING_RX = /^(#{1,6})\s/;
+const LIST_MARKER_RX = /^(\t*)-\s+/;
 const BLOCK_BOUNDARY_RX = /^(\s{0,3}(#{1,6}\s|([-*_])(\s*\3){2,}\s*$|```|~~~|>\s?|[*+-]\s+(?:\[[ x]\]\s+)?|\d+[.)]\s+)|\s*\|.*\|\s*$)/i;
 const INLINE_LINK_RX = /!?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g;
-const LINK_TOOLTIP = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
-    ? 'Cmd-click to open link in a new tab'
-    : 'Ctrl-click to open link in a new tab';
 
 // ── Paragraph tracking ────────────────────────────────────────────────
 function findMarkdownBlockBounds(cm, lineNo) {
@@ -48,7 +50,7 @@ function updateActiveParagraph(cm) {
         // Remove class from previously active lines (use handles — stale handles are ignored by CM)
         activeParaHandles.forEach(h => cm.removeLineClass(h, 'wrap', 'lp-active-para'));
         activeParaHandles = [];
-        if (!livePreviewActive) return;
+        if (!livePreviewActive || !revealActiveSource) return;
         const activeLineHandles = new Set();
         cm.listSelections().forEach((selection) => {
             const firstLine = selection.from().line;
@@ -75,13 +77,25 @@ function updateActiveParagraph(cm) {
 function updateHeadingClasses(cm) {
     cm.operation(() => {
         const n = cm.lineCount();
+        const counters = [0, 0, 0, 0, 0, 0];
+        headingNumberByLine = new Map();
         for (let i = 0; i < n; i++) {
             const h = cm.getLineHandle(i);
             if (!h) continue;
             HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
             const m = HEADING_RX.exec(cm.getLine(i));
-            if (m) cm.addLineClass(h, 'wrap', `lp-heading-${m[1].length}`);
+            if (m) {
+                const level = m[1].length;
+                counters[level - 1]++;
+                for (let j = level; j < counters.length; j++) counters[j] = 0;
+                headingNumberByLine.set(i, `${counters.slice(0, level).join('.')}. `);
+                cm.addLineClass(h, 'wrap', `lp-heading-${level}`);
+                cm.addLineClass(h, 'wrap', 'lp-heading-numbered');
+            } else {
+                cm.removeLineClass(h, 'wrap', 'lp-heading-numbered');
+            }
         }
+        applyHeadingNumbersToVisibleLines(cm);
     });
 }
 
@@ -89,6 +103,45 @@ function scheduleHeadingUpdate(cm) {
     if (!legalNumberingActive) return;
     clearTimeout(headingUpdateTimeout);
     headingUpdateTimeout = setTimeout(() => updateHeadingClasses(cm), 300);
+}
+
+function applyHeadingNumberToLine(cm, lineOrNumber, element) {
+    const lineNo = typeof lineOrNumber === 'number' ? lineOrNumber : cm.getLineNumber(lineOrNumber);
+    const number = headingNumberByLine.get(lineNo);
+    if (!number) {
+        element.style.removeProperty('--lp-heading-number');
+        return;
+    }
+    element.style.setProperty('--lp-heading-number', JSON.stringify(number));
+}
+
+function applyHeadingNumbersToVisibleLines(cm) {
+    const viewport = cm.getViewport();
+    for (let lineNo = viewport.from; lineNo < viewport.to; lineNo++) {
+        const lineInfo = cm.lineInfo(lineNo);
+        if (lineInfo?.handle) {
+            const lineNode = document.querySelector(`.CodeMirror-code > div:nth-child(${lineNo - viewport.from + 1}) pre`);
+            if (lineNode) applyHeadingNumberToLine(cm, lineNo, lineNode);
+        }
+    }
+}
+
+// ── List markers ─────────────────────────────────────────────────────
+function updateListMarkers(cm) {
+    listMarkerHandles.forEach(marker => marker.clear());
+    listMarkerHandles = [];
+
+    cm.operation(() => {
+        for (let lineNo = 0; lineNo < cm.lineCount(); lineNo++) {
+            const line = cm.getLine(lineNo);
+            const match = LIST_MARKER_RX.exec(line);
+            if (!match) continue;
+            const from = { line: lineNo, ch: match[1].length };
+            const to = { line: lineNo, ch: match[0].length };
+            const depth = Math.min(match[1].length, 2);
+            listMarkerHandles.push(cm.markText(from, to, { className: `lp-list-marker lp-list-marker-depth-${depth}` }));
+        }
+    });
 }
 
 // ── Live preview links ────────────────────────────────────────────────
@@ -142,33 +195,31 @@ function getMouseLink(cm, event) {
 }
 
 function initLivePreviewLinks(cm) {
-    const wrapper = cm.getWrapperElement();
-
-    cm.on('mousemove', (_cm, event) => {
-        const link = getMouseLink(cm, event);
-        wrapper.title = link ? LINK_TOOLTIP : '';
-        if (event.target instanceof Element) event.target.title = link ? LINK_TOOLTIP : '';
-        wrapper.classList.toggle('lp-link-hover', Boolean(link));
-    });
-
-    cm.on('mouseout', () => {
-        wrapper.title = '';
-        wrapper.classList.remove('lp-link-hover');
-    });
-
     cm.on('mousedown', (_cm, event) => {
-        if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return;
+        if (event.button !== 0) return;
+        revealActiveSource = true;
         const link = getMouseLink(cm, event);
-        if (!link) return;
-        event.preventDefault();
-        event.stopPropagation();
-        window.open(link.href, '_blank', 'noopener');
+        if (!link) {
+            lastClickedHref = null;
+            updateActiveParagraph(cm);
+            return;
+        }
+
+        const shouldOpen = event.metaKey || event.ctrlKey || lastClickedHref === link.href;
+        lastClickedHref = link.href;
+        updateActiveParagraph(cm);
+        if (shouldOpen) {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(link.href, '_blank', 'noopener');
+        }
     });
 }
 
 // ── Live preview ──────────────────────────────────────────────────────
-function enableLivePreview() {
+function enableLivePreview({ revealSource = false } = {}) {
     livePreviewActive = true;
+    revealActiveSource = revealSource;
     const pane = elements.editorPane;
     pane.classList.add('lp-mode');
     if (state.easymde) updateActiveParagraph(state.easymde.codemirror);
@@ -189,9 +240,13 @@ function setLegalNumbering(active) {
             cm.operation(() => {
                 for (let i = 0; i < cm.lineCount(); i++) {
                     const h = cm.getLineHandle(i);
-                    if (h) HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+                    if (h) {
+                        HEADING_LEVELS.forEach(cls => cm.removeLineClass(h, 'wrap', cls));
+                        cm.removeLineClass(h, 'wrap', 'lp-heading-numbered');
+                    }
                 }
             });
+            headingNumberByLine = new Map();
         }
         if (legalBtn) { legalBtn.classList.remove('active'); legalBtn.title = 'Legal Numbering'; }
     }
@@ -205,6 +260,7 @@ export function refreshState() {
     const cm = state.easymde.codemirror;
     enableLivePreview();
     if (legalNumberingActive) updateHeadingClasses(cm);
+    updateListMarkers(cm);
     updateActiveParagraph(cm);
 }
 
@@ -238,7 +294,7 @@ export function initEditor(onChangeCallback) {
             legalNumberingToolbarBtn, '|',
             'guide'
         ],
-        codemirror: { indentUnit: 4, indentWithTabs: false, tabSize: 4 }
+        codemirror: { indentUnit: 4, indentWithTabs: true, tabSize: 4 }
     });
 
     const cm = state.easymde.codemirror;
@@ -252,8 +308,22 @@ export function initEditor(onChangeCallback) {
     }, 0);
 
     cm.on('cursorActivity', () => updateActiveParagraph(cm));
+    cm.on('keydown', () => {
+        revealActiveSource = true;
+        updateActiveParagraph(cm);
+    });
+    cm.on('blur', () => {
+        revealActiveSource = false;
+        lastClickedHref = null;
+        updateActiveParagraph(cm);
+    });
+    cm.on('renderLine', (_cm, line, element) => applyHeadingNumberToLine(cm, line, element));
+    cm.on('viewportChange', () => {
+        if (legalNumberingActive) applyHeadingNumbersToVisibleLines(cm);
+    });
     cm.on('change', () => {
         scheduleHeadingUpdate(cm);
+        updateListMarkers(cm);
         onChangeCallback(state.easymde.value());
     });
 
@@ -265,8 +335,11 @@ export function handleTocClick(e) {
     const a    = e.currentTarget;
     const line = Number(a.dataset.line);
     const cm   = state.easymde.codemirror;
+    revealActiveSource = false;
+    lastClickedHref = null;
     cm.setCursor({ line, ch: 0 });
     cm.getInputField().focus({ preventScroll: true });
+    updateActiveParagraph(cm);
     const scroller = cm.getScrollerElement();
     scroller.scrollTop = Math.max(0, cm.charCoords({ line, ch: 0 }, 'local').top - TOC_CLICK_OFFSET);
     elements.editorPane.scrollTop = 0;
