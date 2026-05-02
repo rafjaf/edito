@@ -5,6 +5,7 @@ const { Server } = require("socket.io");
 const fs = require('fs').promises; // Use promise-based fs
 const path = require('path');
 const chokidar = require('chokidar');
+const { version } = require('./package.json');
 
 const app = express();
 const server = http.createServer(app);
@@ -165,6 +166,10 @@ app.use('/dompurify', express.static(path.join(__dirname, 'node_modules/dompurif
 app.use(express.static(path.join(__dirname, 'public'))); // Serve static frontend files
 
 // --- API Endpoints ---
+
+app.get('/api/version', (req, res) => {
+    res.json({ version });
+});
 
 // Get list of files and folders
 app.get('/api/files', async (req, res) => {

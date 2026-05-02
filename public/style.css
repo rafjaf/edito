@@ -25,7 +25,8 @@ a { cursor: pointer; }
 
 /* Header */
 #header { display: flex; justify-content: space-between; align-items: center; height: var(--header-height); padding: 0 15px; background-color: var(--secondary-bg); border-bottom: var(--pane-border); position: fixed; top: 0; left: 0; width: 100%; z-index: 10; }
-.app-title { font-size: 1.4em; font-weight: bold; flex-shrink: 0; }
+.app-title { font-size: 1.4em; font-weight: bold; flex-shrink: 0; display: flex; align-items: baseline; gap: 6px; }
+.app-version { color: var(--muted-text); font-size: 0.55em; font-weight: 500; }
 .action-menu { position: relative; flex-shrink: 0; }
 #header-current-file {
     position: absolute; left: 15%; right: 15%; top: 50%; transform: translateY(-50%);
@@ -216,6 +217,7 @@ a { cursor: pointer; }
 .modal-overlay.hidden { display: none; }
 .modal-box { background: var(--secondary-bg); border-radius: 6px; padding: 30px 35px; min-width: 320px; max-width: 480px; box-shadow: 0 4px 20px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 12px; }
 .modal-box h2 { font-size: 1.6em; margin: 0; }
+.about-version { color: var(--muted-text); font-size: 0.55em; font-weight: 500; }
 .modal-box p { margin: 0; line-height: 1.5; }
 .modal-box a { color: var(--link-color); }
 .modal-license { font-size: 0.85em; color: var(--muted-text); }

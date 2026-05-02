@@ -27,6 +27,10 @@ export async function fetchFileContent(filePath) {
     return await apiRequest(`/api/files/content?path=${encodeURIComponent(filePath)}`);
 }
 
+export async function fetchVersion() {
+    return await apiRequest('/api/version');
+}
+
 export async function saveFile(filePath, content) {
     state.isSaving = true;
     state.ignoreNextWatcherEvent = true;

@@ -1,6 +1,8 @@
 // public/modules/elements.js
 export const elements = {
     editorPane: document.getElementById('editor-pane'),
+    appVersion: document.getElementById('app-version'),
+    aboutVersion: document.getElementById('about-version'),
     headerCurrentFile: document.getElementById('header-current-file'),
     fileList: document.getElementById('file-list'),
     outlineList: document.getElementById('outline-list'),

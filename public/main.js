@@ -69,6 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function loadAppVersion() {
+        try {
+            const { version } = await api.fetchVersion();
+            const label = `v${version}`;
+            elements.appVersion.textContent = label;
+            elements.aboutVersion.textContent = label;
+        } catch (error) {
+            // Keep the static HTML fallback when the version endpoint is unavailable.
+        }
+    }
+
     async function loadFileContent(filePath, isExternalReload = false, preloadedContent = null) {
         ui.setSyncStatus('loading');
         try {
@@ -355,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window._editorInstance = state.easymde;
     ui.setToolbarHeightVar();
     initResizablePanes();
+    loadAppVersion();
     loadFileList();
     ui.clearEditorUI();
 });
